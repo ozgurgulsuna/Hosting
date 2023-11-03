@@ -231,35 +231,40 @@ pre code {
 	tab-size: 4;
 }
 
-/* Theming */
+/* Theming *//** Theming */
 
-pre {
-	background-color: var(--vscode-textCodeBlock-background);
-	border: 1px solid var(--vscode-widget-border);
+.vscode-light pre {
+    background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+    background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+    background-color: rgb(0, 0, 0);
 }
 
 .vscode-high-contrast h1 {
-	border-color: rgb(0, 0, 0);
+    border-color: rgb(0, 0, 0);
 }
 
 .vscode-light th {
-	border-color: rgba(0, 0, 0, 0.69);
+    border-color: rgba(0, 0, 0, 0.69);
 }
 
 .vscode-dark th {
-	border-color: rgba(255, 255, 255, 0.69);
+    border-color: rgba(255, 255, 255, 0.69);
 }
 
 .vscode-light h1,
-.vscode-light h2,
 .vscode-light hr,
 .vscode-light td {
-	border-color: rgba(0, 0, 0, 0.18);
+    border-color: rgba(0, 0, 0, 0.18);
 }
 
 .vscode-dark h1,
-.vscode-dark h2,
 .vscode-dark hr,
 .vscode-dark td {
-	border-color: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.18);
 }
