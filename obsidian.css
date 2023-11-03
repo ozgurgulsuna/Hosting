@@ -162,8 +162,6 @@ h1 {
 h2 {
 	font-size: 1.5em;
 	padding-bottom: 0.3em;
-	border-bottom-width: 1px;
-	border-bottom-style: solid;
 }
 
 h3 {
@@ -179,7 +177,13 @@ h5 {
 }
 
 h6 {
-	font-size: 0.85em;
+	font-size: 0.95em;
+        text-align: right;
+        position: relative;
+        bottom: 0px;
+        margin: -40px 0px 15px 100px;
+        padding: 0px;
+        border-bottom: 1px solid #888;
 }
 
 table {
