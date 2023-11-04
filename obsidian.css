@@ -6,7 +6,7 @@
  *  ],
  *--------------------------------------------------------------------------------------------*/
 
-html, body {
+ html, body {
 	font-family: var(--markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, "Ubuntu", "Droid Sans", sans-serif);
 	font-size: var(--markdown-font-size, 14px);
 	padding: 0 26px;
@@ -186,7 +186,7 @@ h6 {
         text-align: right;
         position: relative;
         bottom: 0px;
-        margin: 15px 0px -40px 0px;
+        margin: 0px 0px -50px 0px;
         padding: 0px;
         border-bottom: 1px solid #888;
 }
