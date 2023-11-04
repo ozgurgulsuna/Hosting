@@ -186,7 +186,7 @@ h6 {
         text-align: right;
         position: relative;
         bottom: 0px;
-        margin: -40px 0px 15px 150px;
+        margin: 15px 0px -40px 0px;
         padding: 0px;
         border-bottom: 1px solid #888;
 }
