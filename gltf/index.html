@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Backcore Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #111; overflow: hidden; }
+    canvas { display: block; }
+    #ui {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 10px;
+    }
+    #ui button {
+      padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer;
+      font-size: 13px; font-family: sans-serif;
+      background: rgba(0,0,0,0.55); color: #fff;
+      backdrop-filter: blur(6px); transition: background 0.2s;
+    }
+    #ui button:hover  { background: rgba(0,0,0,0.8); }
+    #ui button.hidden { background: rgba(200,60,60,0.7); }
+    #speedWrap {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
+      padding: 6px 14px; border-radius: 6px; color: #fff;
+      font-size: 13px; font-family: sans-serif;
+    }
+    #speedSlider { width: 100px; accent-color: #fff; cursor: pointer; }
+    #eccSlider   { width: 120px; accent-color: #e05050; cursor: pointer; }
+  </style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// --- scene ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xffffff);
+
+// --- cameras ---
+const camPersp = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.001, 100);
+camPersp.position.set(0.18, 0.18, 0.22);
+
+const orthoSize = 0.18;
+const camOrtho  = new THREE.OrthographicCamera(
+  -orthoSize * innerWidth / innerHeight, orthoSize * innerWidth / innerHeight,
+   orthoSize, -orthoSize, 0.001, 100
+);
+camOrtho.position.copy(camPersp.position);
+
+let camera = camPersp;
+
+// --- renderer ---
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+// --- lights ---
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.85;
+
+// soft neutral ambient
+const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+scene.add(ambient);
+
+// front-left key — gentle, slightly warm
+const key = new THREE.DirectionalLight(0xfff8f0, 0.9);
+key.position.set(-1, 1.5, 2);
+scene.add(key);
+
+// front-right fill — same strength, slightly cool for balance
+const fill = new THREE.DirectionalLight(0xf0f4ff, 0.9);
+fill.position.set(1, 1, 2);
+scene.add(fill);
+
+// soft back rim — separates model from background
+const rim = new THREE.DirectionalLight(0xffffff, 0.4);
+rim.position.set(0, -1, -2);
+scene.add(rim);
+
+// --- orbit controls ---
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 0.05;
+controls.maxDistance = 1.0;
+controls.target.set(0, 0, 0);
+
+// --- group structure ---
+// spinGroup rotates around motor axis (world Y after tilt)
+// tiltGroup tilts 90° so the disc face is visible
+let rotor1Ref = null, rotor2Ref = null, statorRef = null;
+let scaleRef = 1, statorBaseX = 0, statorBaseY = 0;
+let eccMode = 'static';   // 'static' | 'dynamic'
+let eccMM   = 0;
+// spinGroup → tiltGroup : rotors spin + tilt
+const spinGroup = new THREE.Group();
+const tiltGroup = new THREE.Group();
+tiltGroup.rotation.x = Math.PI / 2;
+spinGroup.add(tiltGroup);
+scene.add(spinGroup);
+
+// staticTiltGroup : stator tilts but does NOT spin
+const staticTiltGroup = new THREE.Group();
+staticTiltGroup.rotation.x = Math.PI / 2;
+scene.add(staticTiltGroup);
+let ready = false;
+
+function prepareRotor(root) {
+  root.traverse((obj) => {
+    if (obj.name === 'magnetFixture') obj.visible = false;
+    if (obj.name === 'magnetTemplate' && obj.isMesh) {
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      mats.forEach(m => m.color.setRGB(0.08, 0.08, 0.08));
+    }
+  });
+  return root;
+}
+
+// --- load both GLTFs in parallel ---
+const loader = new GLTFLoader();
+const loadGLTF = (url) => new Promise((res, rej) => loader.load(url, res, undefined, rej));
+
+Promise.all([
+  loadGLTF('backcore_colored.gltf'),
+  loadGLTF('cycloidalDisc.gltf')
+]).then(([bcGltf, discGltf]) => {
+
+  // --- rotors ---
+  const rotor1 = prepareRotor(bcGltf.scene);
+  const rotor2 = prepareRotor(bcGltf.scene.clone(true));
+
+  const box    = new THREE.Box3().setFromObject(rotor1);
+  const centre = box.getCenter(new THREE.Vector3());
+  const size   = box.getSize(new THREE.Vector3());
+  const sc     = 0.15 / Math.max(size.x, size.y, size.z);
+
+  // Motor axis XY = magnet ring centroid (full bbox XY is skewed by asymmetric screws/housing)
+  const axisBox = new THREE.Box3();
+  rotor1.traverse(obj => {
+    if (obj.isMesh) {
+      const m = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+      if (m?.name?.startsWith('magnet_')) axisBox.expandByObject(obj);
+    }
+  });
+  const axis = axisBox.getCenter(new THREE.Vector3()); // XY motor axis in GLTF space
+
+  // Position: XY from motor axis, Z from full bbox centre
+  rotor1.position.set(-sc * axis.x, -sc * axis.y, -sc * centre.z);
+  rotor1.scale.setScalar(sc);
+  rotor1.updateMatrixWorld(true);
+
+  const mBox = new THREE.Box3();
+  rotor1.traverse(obj => {
+    if (obj.isMesh) {
+      const m = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+      if (m?.name?.startsWith('magnet_')) mBox.expandByObject(obj);
+    }
+  });
+  const faceZ = Math.abs(mBox.min.z) > Math.abs(mBox.max.z) ? mBox.min.z : mBox.max.z;
+  const AIRGAP = -0.006;
+
+  rotor1.position.z += -AIRGAP / 2 - faceZ;
+
+  rotor2.position.set(-sc * axis.x, -sc * axis.y, sc * centre.z); // Z flipped for mirror
+  rotor2.scale.set(sc, sc, -sc);
+  rotor2.updateMatrixWorld(true);
+
+  const mBox2 = new THREE.Box3();
+  rotor2.traverse(obj => {
+    if (obj.isMesh) {
+      const m = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+      if (m?.name?.startsWith('magnet_')) mBox2.expandByObject(obj);
+    }
+  });
+  const faceZ2 = Math.abs(mBox2.max.z) > Math.abs(mBox2.min.z) ? mBox2.max.z : mBox2.min.z;
+  rotor2.position.z += AIRGAP / 2 - faceZ2;
+
+  // --- stator disc ---
+  const stator = discGltf.scene;
+  const discBox    = new THREE.Box3().setFromObject(stator);
+  const discCentre = discBox.getCenter(new THREE.Vector3());
+  // mirror rotor centering: multiply by sc so geometric centre lands at local origin (0,0)
+  stator.position.set(-sc * discCentre.x, -sc * discCentre.y, -sc * discCentre.z);
+  stator.position.z += -0.002; // nudge up to prevent z-fighting with rotor faces
+  stator.scale.setScalar(sc);
+  scaleRef    = sc;
+  statorBaseX = 0;   // geometric centre is now at local (0,0) = rotation centre
+  statorBaseY = 0;
+  stator.rotation.x = Math.PI / 2;                  // 90° rotation
+
+  rotor1Ref = rotor1;
+  rotor2Ref = rotor2;
+  statorRef  = stator;
+  tiltGroup.add(rotor1);
+  tiltGroup.add(rotor2);
+  staticTiltGroup.add(stator);                       // stator in static group — no spin
+
+  ready = true;
+  document.title = 'Motor Viewer';
+
+}).catch(err => console.error('Load error', err));
+
+// --- speed ---
+let rotSpeed = 0.005;
+
+// --- animate ---
+function animate() {
+  requestAnimationFrame(animate);
+  if (ready) {
+    spinGroup.rotation.y += rotSpeed;
+    if (eccMode === 'dynamic' && statorRef) {
+      const r = eccMM * 0.001 * scaleRef;
+      const a = spinGroup.rotation.y;
+      statorRef.position.x = statorBaseX - r * Math.cos(a);
+      statorRef.position.y = statorBaseY + r * Math.sin(a);
+    }
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+// --- resize ---
+window.addEventListener('resize', () => {
+  const aspect = innerWidth / innerHeight;
+  camPersp.aspect = aspect;
+  camPersp.updateProjectionMatrix();
+  camOrtho.left   = -orthoSize * aspect;
+  camOrtho.right  =  orthoSize * aspect;
+  camOrtho.top    =  orthoSize;
+  camOrtho.bottom = -orthoSize;
+  camOrtho.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+// --- rotor toggle buttons ---
+const ui = document.createElement('div');
+ui.id = 'ui';
+ui.innerHTML = `
+  <button id="btnR1">Hide Rotor 1</button>
+  <button id="btnS">Hide Stator</button>
+  <button id="btnR2">Hide Rotor 2</button>
+  <div id="speedWrap">
+    <span>Speed</span>
+    <input id="speedSlider" type="range" min="0" max="100" step="0.1" value="1">
+    <span id="speedVal">1×</span>
+  </div>
+  <div id="speedWrap">
+    <span>Eccentricity</span>
+    <input id="eccSlider" type="range" min="0" max="10" step="0.1" value="0">
+    <span id="eccVal">0.0 mm</span>
+  </div>
+  <button id="btnEccMode">Dynamic</button>
+  <div id="speedWrap">
+    <span>Stator opacity</span>
+    <input id="opacitySlider" type="range" min="0" max="1" step="0.01" value="1">
+  </div>
+  <button id="btnCam">Orthographic</button>
+`;
+document.body.appendChild(ui);
+
+const slider = document.getElementById('speedSlider');
+const speedVal = document.getElementById('speedVal');
+slider.addEventListener('input', () => {
+  rotSpeed = parseFloat(slider.value) * 0.005;
+  speedVal.textContent = parseFloat(slider.value).toFixed(1) + '×';
+});
+
+function makeToggle(btnId, getRotor) {
+  document.getElementById(btnId).addEventListener('click', function() {
+    const r = getRotor();
+    if (!r) return;
+    r.visible = !r.visible;
+    this.textContent = r.visible ? this.textContent.replace('Show','Hide') : this.textContent.replace('Hide','Show');
+    this.classList.toggle('hidden', !r.visible);
+  });
+}
+
+makeToggle('btnR1', () => rotor1Ref);
+makeToggle('btnS',  () => statorRef);
+makeToggle('btnR2', () => rotor2Ref);
+
+document.getElementById('opacitySlider').addEventListener('input', function () {
+  if (!statorRef) return;
+  const v = parseFloat(this.value);
+  statorRef.traverse(obj => {
+    if (obj.isMesh) {
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      mats.forEach(m => { m.transparent = v < 1; m.opacity = v; });
+    }
+  });
+});
+
+document.getElementById('btnCam').addEventListener('click', function () {
+  const toOrtho = camera === camPersp;
+  if (toOrtho) {
+    // copy persp position/target to ortho
+    camOrtho.position.copy(camPersp.position);
+    camOrtho.quaternion.copy(camPersp.quaternion);
+  } else {
+    camPersp.position.copy(camOrtho.position);
+    camPersp.quaternion.copy(camOrtho.quaternion);
+  }
+  camera = toOrtho ? camOrtho : camPersp;
+  controls.object = camera;
+  controls.update();
+  this.textContent = toOrtho ? 'Perspective' : 'Orthographic';
+});
+
+const eccSlider  = document.getElementById('eccSlider');
+const eccVal     = document.getElementById('eccVal');
+const btnEccMode = document.getElementById('btnEccMode');
+
+eccSlider.addEventListener('input', () => {
+  eccMM = parseFloat(eccSlider.value);
+  eccVal.textContent = eccMM.toFixed(1) + ' mm';
+  if (eccMode === 'static' && statorRef) {
+    statorRef.position.x = statorBaseX - eccMM * 0.001 * scaleRef;
+  }
+});
+
+btnEccMode.addEventListener('click', function () {
+  eccMode = eccMode === 'static' ? 'dynamic' : 'static';
+  this.textContent = eccMode === 'static' ? 'Dynamic' : 'Static';
+  this.classList.toggle('hidden', eccMode === 'dynamic');
+  // reset stator Y when switching back to static
+  if (eccMode === 'static' && statorRef) {
+    statorRef.position.y = statorBaseY;
+    statorRef.position.x = statorBaseX - eccMM * 0.001 * scaleRef;
+  }
+});
+</script>
+</body>
+</html>
