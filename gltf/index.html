@@ -40,12 +40,18 @@
 </script>
 <script type="module">
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader }      from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls }   from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer }  from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass }        from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
+import { SMAAPass }        from 'three/addons/postprocessing/SMAAPass.js';
 
 // --- scene ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xffffff);
+
 
 // --- cameras ---
 const camPersp = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.001, 100);
@@ -67,6 +73,25 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
+
+// --- post-processing ---
+const composer = new EffectComposer(renderer);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+const ssaoPass = new GTAOPass(scene, camera, innerWidth, innerHeight);
+ssaoPass.output    = GTAOPass.OUTPUT.Default;
+ssaoPass.pdSamples = 16;
+ssaoPass.enabled   = false;
+const aoParams = ssaoPass.gtaoMaterial.uniforms;
+aoParams['radius'          ].value = 0.05;
+aoParams['distanceExponent'].value = 1.5;
+aoParams['thickness'       ].value = 1.0;
+aoParams['scale'           ].value = 1.5;
+composer.addPass(ssaoPass);
+
+composer.addPass(new OutputPass());
+composer.addPass(new SMAAPass(innerWidth * devicePixelRatio, innerHeight * devicePixelRatio));
 
 // --- lights ---
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -102,10 +127,10 @@ controls.target.set(0, 0, 0);
 // --- group structure ---
 // spinGroup rotates around motor axis (world Y after tilt)
 // tiltGroup tilts 90° so the disc face is visible
-let rotor1Ref = null, rotor2Ref = null, statorRef = null;
+let rotor1Ref = null, rotor2Ref = null, statorRef = null, windingsRef = null;
 let scaleRef = 1, statorBaseX = 0, statorBaseY = 0;
 let eccMode = 'static';   // 'static' | 'dynamic'
-let eccMM   = 0;
+let eccMM   = 1.5;
 // spinGroup → tiltGroup : rotors spin + tilt
 const spinGroup = new THREE.Group();
 const tiltGroup = new THREE.Group();
@@ -136,8 +161,9 @@ const loadGLTF = (url) => new Promise((res, rej) => loader.load(url, res, undefi
 
 Promise.all([
   loadGLTF('backcore_colored.gltf'),
-  loadGLTF('cycloidalDisc.gltf')
-]).then(([bcGltf, discGltf]) => {
+  loadGLTF('cycloidalDisc.gltf'),
+  loadGLTF('windings.gltf')
+]).then(([bcGltf, discGltf, windGltf]) => {
 
   // --- rotors ---
   const rotor1 = prepareRotor(bcGltf.scene);
@@ -190,24 +216,70 @@ Promise.all([
   rotor2.position.z += AIRGAP / 2 - faceZ2;
 
   // --- stator disc ---
+  // Step 1: rotation FIRST — establishes the correct XY reference plane
   const stator = discGltf.scene;
-  const discBox    = new THREE.Box3().setFromObject(stator);
-  const discCentre = discBox.getCenter(new THREE.Vector3());
-  // mirror rotor centering: multiply by sc so geometric centre lands at local origin (0,0)
-  stator.position.set(-sc * discCentre.x, -sc * discCentre.y, -sc * discCentre.z);
-  stator.position.z += -0.002; // nudge up to prevent z-fighting with rotor faces
+  stator.rotation.x = Math.PI / 2;
+  stator.updateMatrixWorld(true);
+  // Step 2: compute centre in rotated space
+  const discBoxR  = new THREE.Box3().setFromObject(stator);
+  const discCentR = discBoxR.getCenter(new THREE.Vector3());
+  // Step 3: centre and scale
+  stator.position.set(-sc * discCentR.x, -sc * discCentR.y, -sc * discCentR.z);
   stator.scale.setScalar(sc);
   scaleRef    = sc;
-  statorBaseX = 0;   // geometric centre is now at local (0,0) = rotation centre
+  statorBaseX = 0;
   statorBaseY = 0;
-  stator.rotation.x = Math.PI / 2;                  // 90° rotation
 
-  rotor1Ref = rotor1;
-  rotor2Ref = rotor2;
-  statorRef  = stator;
+  // --- windings ---
+  // Step 1: rotation FIRST — same reference plane as disc
+  const windRaw = windGltf.scene;
+  windRaw.rotation.x = Math.PI / 2;
+  windRaw.updateMatrixWorld(true);
+  // Step 2: compute centre in rotated space
+  const windBoxR  = new THREE.Box3().setFromObject(windRaw);
+  const windCentR = windBoxR.getCenter(new THREE.Vector3());
+  // Step 3: centre on own bbox (in rotated frame) — both land at world origin
+  const windPos = new THREE.Vector3(
+    -sc * windCentR.x,
+    -sc * windCentR.y,
+    -sc * windCentR.z
+  );
+
+  const windings1 = windRaw;
+  windings1.position.copy(windPos);
+  windings1.position.z -= 0.002;
+  windings1.scale.setScalar(sc);
+
+  const windings2 = windRaw.clone(true);
+  windings2.position.copy(windPos);
+  windings2.position.z += 0.002158;
+  windings2.scale.set(sc, -sc, sc);
+  windings2.rotation.x = Math.PI / 2;
+
+  const windingsGroup = new THREE.Group();
+  windingsGroup.add(windings1);
+  windingsGroup.add(windings2);
+
+  // copper material
+  windingsGroup.traverse(obj => {
+    if (!obj.isMesh) return;
+    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+    mats.forEach(m => {
+      m.color.setRGB(0.85, 0.45, 0.15);  // copper orange
+      m.metalness  = 0.0;
+      m.roughness  = 0.6;
+      m.needsUpdate = true;
+    });
+  });
+
+  rotor1Ref   = rotor1;
+  rotor2Ref   = rotor2;
+  statorRef   = stator;
+  windingsRef = windingsGroup;
   tiltGroup.add(rotor1);
   tiltGroup.add(rotor2);
-  staticTiltGroup.add(stator);                       // stator in static group — no spin
+  staticTiltGroup.add(stator);
+  staticTiltGroup.add(windingsGroup);
 
   ready = true;
   document.title = 'Motor Viewer';
@@ -215,22 +287,39 @@ Promise.all([
 }).catch(err => console.error('Load error', err));
 
 // --- speed ---
-let rotSpeed = 0.005;
+let rotSpeed = 5 * 0.005*0;
+let camFollow = false;
 
 // --- animate ---
 function animate() {
   requestAnimationFrame(animate);
   if (ready) {
     spinGroup.rotation.y += rotSpeed;
+    if (camFollow) {
+      const cos = Math.cos(rotSpeed), sin = Math.sin(rotSpeed);
+      // rotate position around Y
+      const px = camera.position.x, pz = camera.position.z;
+      camera.position.x = px * cos + pz * sin;
+      camera.position.z = -px * sin + pz * cos;
+      // rotate up vector around Y (needed when camera is on the Y axis)
+      const ux = camera.up.x, uz = camera.up.z;
+      camera.up.x = ux * cos + uz * sin;
+      camera.up.z = -ux * sin + uz * cos;
+      camera.lookAt(controls.target);
+      controls.update();
+    }
     if (eccMode === 'dynamic' && statorRef) {
       const r = eccMM * 0.001 * scaleRef;
       const a = spinGroup.rotation.y;
       statorRef.position.x = statorBaseX - r * Math.cos(a);
       statorRef.position.y = statorBaseY + r * Math.sin(a);
+      if (windingsRef) { windingsRef.position.x = statorRef.position.x; windingsRef.position.y = statorRef.position.y; }
     }
   }
   controls.update();
-  renderer.render(scene, camera);
+  renderPass.camera = camera;
+  ssaoPass.camera = camera;
+  composer.render();
 }
 animate();
 
@@ -245,6 +334,9 @@ window.addEventListener('resize', () => {
   camOrtho.bottom = -orthoSize;
   camOrtho.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  ssaoPass.setSize(innerWidth, innerHeight );
+
 });
 // --- rotor toggle buttons ---
 const ui = document.createElement('div');
@@ -252,16 +344,17 @@ ui.id = 'ui';
 ui.innerHTML = `
   <button id="btnR1">Hide Rotor 1</button>
   <button id="btnS">Hide Stator</button>
+  <button id="btnW">Hide Windings</button>
   <button id="btnR2">Hide Rotor 2</button>
   <div id="speedWrap">
     <span>Speed</span>
-    <input id="speedSlider" type="range" min="0" max="100" step="0.1" value="1">
-    <span id="speedVal">1×</span>
+    <input id="speedSlider" type="range" min="0" max="50" step="0.1" value="0">
+    <span id="speedVal">5×</span>
   </div>
   <div id="speedWrap">
     <span>Eccentricity</span>
-    <input id="eccSlider" type="range" min="0" max="10" step="0.1" value="0">
-    <span id="eccVal">0.0 mm</span>
+    <input id="eccSlider" type="range" min="0" max="5" step="0.1" value="1.5">
+    <span id="eccVal">1.5 mm</span>
   </div>
   <button id="btnEccMode">Dynamic</button>
   <div id="speedWrap">
@@ -269,6 +362,8 @@ ui.innerHTML = `
     <input id="opacitySlider" type="range" min="0" max="1" step="0.01" value="1">
   </div>
   <button id="btnCam">Orthographic</button>
+  <button id="btnCamFollow">Cam Follow</button>
+  <button id="btnAO">AO On</button>
 `;
 document.body.appendChild(ui);
 
@@ -291,6 +386,7 @@ function makeToggle(btnId, getRotor) {
 
 makeToggle('btnR1', () => rotor1Ref);
 makeToggle('btnS',  () => statorRef);
+makeToggle('btnW',  () => windingsRef);
 makeToggle('btnR2', () => rotor2Ref);
 
 document.getElementById('opacitySlider').addEventListener('input', function () {
@@ -302,6 +398,29 @@ document.getElementById('opacitySlider').addEventListener('input', function () {
       mats.forEach(m => { m.transparent = v < 1; m.opacity = v; });
     }
   });
+});
+
+document.getElementById('btnAO').addEventListener('click', function () {
+  ssaoPass.enabled = !ssaoPass.enabled;
+  this.textContent = ssaoPass.enabled ? 'AO Off' : 'AO On';
+  this.classList.toggle('hidden', ssaoPass.enabled);
+});
+
+document.getElementById('btnCamFollow').addEventListener('click', function () {
+  camFollow = !camFollow;
+  this.textContent = camFollow ? 'Cam Free' : 'Cam Follow';
+  this.classList.toggle('hidden', camFollow);
+  controls.enabled = !camFollow;
+  if (!camFollow) camera.up.set(0, 1, 0);
+  if (camFollow) {
+    // reposition camera to look at the rotation centre from the side
+    const dist = camera.position.distanceTo(controls.target);
+    camera.position.set(0, dist, 0);
+    camera.up.set(0, 0, -1);
+    controls.target.set(0, 0, 0);
+    camera.lookAt(0, 0, 0);
+    controls.update();
+  }
 });
 
 document.getElementById('btnCam').addEventListener('click', function () {
@@ -329,6 +448,7 @@ eccSlider.addEventListener('input', () => {
   eccVal.textContent = eccMM.toFixed(1) + ' mm';
   if (eccMode === 'static' && statorRef) {
     statorRef.position.x = statorBaseX - eccMM * 0.001 * scaleRef;
+    if (windingsRef) windingsRef.position.x = statorRef.position.x;
   }
 });
 
@@ -336,10 +456,10 @@ btnEccMode.addEventListener('click', function () {
   eccMode = eccMode === 'static' ? 'dynamic' : 'static';
   this.textContent = eccMode === 'static' ? 'Dynamic' : 'Static';
   this.classList.toggle('hidden', eccMode === 'dynamic');
-  // reset stator Y when switching back to static
   if (eccMode === 'static' && statorRef) {
     statorRef.position.y = statorBaseY;
     statorRef.position.x = statorBaseX - eccMM * 0.001 * scaleRef;
+    if (windingsRef) { windingsRef.position.x = statorRef.position.x; windingsRef.position.y = statorRef.position.y; }
   }
 });
 </script>
