@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Static and Dynamic Planar Eccentricity Analysis – ECCE Europe 2026</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; background: #222; overflow: hidden; }
+
+/* ── deck ── */
+#deck {
+  position: relative; width: 100vw; height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ── slide wrapper (16:9) ── */
+.slide {
+  display: none;
+  position: absolute;
+  width:  min(100vw, calc(100vh * 16/9));
+  height: min(100vh, calc(100vw * 9/16));
+  box-shadow: 0 4px 32px rgba(0,0,0,0.6);
+  overflow: hidden;
+}
+.slide.active { display: block; }
+
+/* slide image fills the wrapper exactly */
+.slide img.page {
+  width: 100%; height: 100%;
+  object-fit: fill;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ── overlay layer (for future glTF iframes) ── */
+.slide .overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.slide .overlay > * { pointer-events: auto; }
+
+/* ── nav pill ── */
+#nav {
+  position: fixed; bottom: 1.5%; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; z-index: 100;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
+  padding: 5px 16px; border-radius: 20px; color: #fff;
+  font-family: sans-serif; font-size: 13px; user-select: none;
+}
+#nav button {
+  background: none; border: 1px solid rgba(255,255,255,0.35);
+  color: #fff; cursor: pointer; border-radius: 5px;
+  padding: 3px 11px; font-size: 13px; transition: background 0.15s;
+}
+#nav button:hover { background: rgba(255,255,255,0.2); }
+#slideNum { min-width: 55px; text-align: center; }
+
+/* ── progress bar ── */
+#progress {
+  position: fixed; bottom: 0; left: 0; height: 3px;
+  background: #215caf; transition: width 0.2s; z-index: 200;
+}
+</style>
+</head>
+<body>
+
+<div id="deck">
+
+  <section class="slide active" id="s1">
+    <img class="page" src="slides_svg/slide-01.svg" alt="Slide 1">
+    <div class="overlay">
+      <iframe id="gltfFrame"
+        src="gltf/index.html?embed"
+        style="position:absolute; right:-94%; bottom:-82%; width:240%; height:240%; border:none; background:transparent;"
+        allowtransparency="true"
+        title="3D motor model">
+      </iframe>
+    </div>
+  </section>
+
+  <section class="slide" id="s2">
+    <img class="page" src="slides_svg/slide-02.svg" alt="Slide 2">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s3">
+    <img class="page" src="slides_svg/slide-03.svg" alt="Slide 3">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s4">
+    <img class="page" src="slides_svg/slide-04.svg" alt="Slide 4">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s5">
+    <img class="page" src="slides_svg/slide-05.svg" alt="Slide 5">
+    <!-- <div class="overlay">
+      <iframe id="explodedFrame"
+        src="gltf_exploded/index.html?embed"
+        style="position:absolute; right:-60%; top:-32%; width:165%; height:165%; border:none; background:transparent;"
+        allowtransparency="true"
+        title="Exploded motor view">
+      </iframe>
+    </div> -->
+  </section>
+
+  <section class="slide" id="s6">
+    <img class="page" src="slides_svg/slide-06.svg" alt="Slide 6">
+    <div class="overlay">
+      <iframe id="explodedFrame"
+        src="gltf_exploded/index.html?embed"
+        style="position:absolute; right:-60%; top:-32%; width:165%; height:165%; border:none; background:transparent;"
+        allowtransparency="true"
+        title="Exploded motor view">
+      </iframe>
+    </div>
+  </section>
+
+  <section class="slide" id="s7">
+    <img class="page" src="slides_svg/slide-07.svg" alt="Slide 7">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s8">
+    <img class="page" src="slides_svg/slide-08.svg" alt="Slide 8">
+    <div class="overlay">
+      <iframe id="speFrame"
+        src="gltf_spe/index.html?embed"
+        style="position:absolute; left:2%; top:5%; width:47%; height:82%; border:none; background:transparent;"
+        allowtransparency="true"
+        title="SPE 3D view">
+      </iframe>
+      <iframe id="dpeFrame"
+        src="gltf_dpe/index.html?embed"
+        style="position:absolute; right:2%; top:5%; width:47%; height:82%; border:none; background:transparent;"
+        allowtransparency="true"
+        title="DPE 3D view">
+      </iframe>
+    </div>
+  </section>
+
+  <section class="slide" id="s9">
+    <img class="page" src="slides_svg/slide-09.svg" alt="Slide 9">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s10">
+    <img class="page" src="slides_svg/slide-10.svg" alt="Slide 10">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s11">
+    <img class="page" src="slides_svg/slide-11.svg" alt="Slide 11">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s12">
+    <img class="page" src="slides_svg/slide-12.svg" alt="Slide 12">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s13">
+    <img class="page" src="slides_svg/slide-13.svg" alt="Slide 13">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s14">
+    <img class="page" src="slides_svg/slide-14.svg" alt="Slide 14">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s15">
+    <img class="page" src="slides_svg/slide-15.svg" alt="Slide 15">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s16">
+    <img class="page" src="slides_svg/slide-16.svg" alt="Slide 16">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s17">
+    <img class="page" src="slides_svg/slide-17.svg" alt="Slide 17">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s18">
+    <img class="page" src="slides_svg/slide-18.svg" alt="Slide 18">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s19">
+    <img class="page" src="slides_svg/slide-19.svg" alt="Slide 19">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s20">
+    <img class="page" src="slides_svg/slide-20.svg" alt="Slide 20">
+    <div class="overlay"></div>
+  </section>
+
+  <section class="slide" id="s21">
+    <img class="page" src="slides_svg/slide-21.svg" alt="Slide 21">
+    <div class="overlay"></div>
+  </section>
+
+</div>
+
+<!-- ── nav ── -->
+<div id="nav">
+  <button id="btnPrev">&#8592;</button>
+  <span id="slideNum">1 / 21</span>
+  <button id="btnNext">&#8594;</button>
+</div>
+<div id="progress"></div>
+
+<script>
+const slides = document.querySelectorAll('.slide');
+const total  = slides.length;
+let cur = 0;
+
+function show(idx) {
+  slides[cur].classList.remove('active');
+  cur = (idx + total) % total;
+  slides[cur].classList.add('active');
+  document.getElementById('slideNum').textContent = (cur+1) + ' / ' + total;
+  document.getElementById('progress').style.width = ((cur+1)/total*100) + '%';
+}
+
+document.getElementById('btnNext').addEventListener('click', () => show(cur+1));
+document.getElementById('btnPrev').addEventListener('click', () => show(cur-1));
+
+// glTF speed control — sends to all glTF iframes
+function setSpeed(speed) {
+  ['gltfFrame','speFrame','dpeFrame','explodedFrame'].forEach(id => {
+    const fr = document.getElementById(id);
+    if (fr) fr.contentWindow.postMessage({ type: 'rotate:speed', value: speed }, '*');
+  });
+}
+
+document.addEventListener('keydown', e => {
+  if (['ArrowRight','ArrowDown',' '].includes(e.key)) { e.preventDefault(); show(cur+1); }
+  if (['ArrowLeft','ArrowUp'].includes(e.key))        { e.preventDefault(); show(cur-1); }
+  if (e.key === 'Home') show(0);
+  if (e.key === 'End')  show(total-1);
+  // speed keys: 0 = stop, 1–5 = increasing speed
+  if (e.key === '0') setSpeed(0);
+  if (e.key === '1') setSpeed(0.004);
+  if (e.key === '2') setSpeed(0.010);
+  if (e.key === '3') setSpeed(0.020);
+  if (e.key === '4') setSpeed(0.035);
+  if (e.key === '5') setSpeed(0.055);
+});
+
+let tx = 0;
+document.addEventListener('touchstart', e => { tx = e.touches[0].clientX; });
+document.addEventListener('touchend',   e => {
+  const dx = e.changedTouches[0].clientX - tx;
+  if (Math.abs(dx) > 40) show(dx < 0 ? cur+1 : cur-1);
+});
+
+document.getElementById('progress').style.width = (1/total*100) + '%';
+
+// keep focus on parent page so keyboard always works
+window.focus();
+document.addEventListener('click', () => window.focus());
+// reclaim focus whenever iframe is clicked
+document.getElementById('gltfFrame').addEventListener('load', () => {
+  window.focus();
+});
+</script>
+</body>
+</html>
