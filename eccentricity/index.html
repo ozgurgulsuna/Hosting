@@ -73,8 +73,8 @@ html, body { width: 100%; height: 100%; background: #222; overflow: hidden; }
     <img class="page" src="slides_svg/slide-01.svg" alt="Slide 1">
     <div class="overlay">
       <iframe id="gltfFrame"
-        src="gltf/index.html?embed"
-        style="position:absolute; right:-94%; bottom:-82%; width:240%; height:240%; border:none; background:transparent;"
+        data-src="gltf/index.html?embed"
+        style="position:absolute; left:0; top:0; width:100%; height:100%; border:none; background:transparent;"
         allowtransparency="true"
         title="3D motor model">
       </iframe>
@@ -101,7 +101,7 @@ html, body { width: 100%; height: 100%; background: #222; overflow: hidden; }
     <!-- <div class="overlay">
       <iframe id="explodedFrame"
         src="gltf_exploded/index.html?embed"
-        style="position:absolute; right:-60%; top:-32%; width:165%; height:165%; border:none; background:transparent;"
+        style="position:absolute; left:0; top:0; width:100%; height:100%; border:none; background:transparent;"
         allowtransparency="true"
         title="Exploded motor view">
       </iframe>
@@ -112,8 +112,8 @@ html, body { width: 100%; height: 100%; background: #222; overflow: hidden; }
     <img class="page" src="slides_svg/slide-06.svg" alt="Slide 6">
     <div class="overlay">
       <iframe id="explodedFrame"
-        src="gltf_exploded/index.html?embed"
-        style="position:absolute; right:-60%; top:-32%; width:165%; height:165%; border:none; background:transparent;"
+        data-src="gltf_exploded/index.html?embed"
+        style="position:absolute; left:0; top:0; width:100%; height:100%; border:none; background:transparent;"
         allowtransparency="true"
         title="Exploded motor view">
       </iframe>
@@ -129,13 +129,13 @@ html, body { width: 100%; height: 100%; background: #222; overflow: hidden; }
     <img class="page" src="slides_svg/slide-08.svg" alt="Slide 8">
     <div class="overlay">
       <iframe id="speFrame"
-        src="gltf_spe/index.html?embed"
+        data-src="gltf_spe/index.html?embed"
         style="position:absolute; left:2%; top:5%; width:47%; height:82%; border:none; background:transparent;"
         allowtransparency="true"
         title="SPE 3D view">
       </iframe>
       <iframe id="dpeFrame"
-        src="gltf_dpe/index.html?embed"
+        data-src="gltf_dpe/index.html?embed"
         style="position:absolute; right:2%; top:5%; width:47%; height:82%; border:none; background:transparent;"
         allowtransparency="true"
         title="DPE 3D view">
@@ -223,10 +223,27 @@ const slides = document.querySelectorAll('.slide');
 const total  = slides.length;
 let cur = 0;
 
+function loadIframes(slide) {
+  slide.querySelectorAll('iframe[data-src]').forEach(fr => {
+    if (!fr.src || fr.src === window.location.href) {
+      fr.src = fr.dataset.src;
+      fr.addEventListener('load', () => window.focus(), { once: true });
+    }
+  });
+}
+
+function unloadIframes(slide) {
+  slide.querySelectorAll('iframe[data-src]').forEach(fr => {
+    fr.src = '';
+  });
+}
+
 function show(idx) {
+  unloadIframes(slides[cur]);
   slides[cur].classList.remove('active');
   cur = (idx + total) % total;
   slides[cur].classList.add('active');
+  loadIframes(slides[cur]);
   document.getElementById('slideNum').textContent = (cur+1) + ' / ' + total;
   document.getElementById('progress').style.width = ((cur+1)/total*100) + '%';
 }
@@ -268,10 +285,9 @@ document.getElementById('progress').style.width = (1/total*100) + '%';
 // keep focus on parent page so keyboard always works
 window.focus();
 document.addEventListener('click', () => window.focus());
-// reclaim focus whenever iframe is clicked
-document.getElementById('gltfFrame').addEventListener('load', () => {
-  window.focus();
-});
+
+// load iframes for the initial slide
+loadIframes(slides[cur]);
 </script>
 </body>
 </html>

@@ -67,32 +67,39 @@ camOrtho.position.copy(camPersp.position);
 
 let camera = camPersp;
 
+// --- embed detection ---
+const isEmbed = new URLSearchParams(location.search).has('embed');
+
 // --- renderer ---
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(devicePixelRatio);
+renderer.setPixelRatio(isEmbed ? 1 : devicePixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = !isEmbed;
 document.body.appendChild(renderer.domElement);
 
 // --- post-processing ---
+let ssaoPass = null;
 const composer = new EffectComposer(renderer);
 const renderPass = new RenderPass(scene, camera);
 composer.addPass(renderPass);
 
-const ssaoPass = new GTAOPass(scene, camera, innerWidth, innerHeight);
-ssaoPass.output    = GTAOPass.OUTPUT.Default;
-ssaoPass.pdSamples = 16;
-ssaoPass.enabled   = false;
-const aoParams = ssaoPass.gtaoMaterial.uniforms;
-aoParams['radius'          ].value = 0.05;
-aoParams['distanceExponent'].value = 1.5;
-aoParams['thickness'       ].value = 1.0;
-aoParams['scale'           ].value = 1.5;
-composer.addPass(ssaoPass);
+if (!isEmbed) {
+  ssaoPass = new GTAOPass(scene, camera, innerWidth, innerHeight);
+  ssaoPass.output    = GTAOPass.OUTPUT.Default;
+  ssaoPass.pdSamples = 16;
+  ssaoPass.enabled   = false;
+  const aoParams = ssaoPass.gtaoMaterial.uniforms;
+  aoParams['radius'          ].value = 0.05;
+  aoParams['distanceExponent'].value = 1.5;
+  aoParams['thickness'       ].value = 1.0;
+  aoParams['scale'           ].value = 1.5;
+  composer.addPass(ssaoPass);
+}
 
 composer.addPass(new OutputPass());
-composer.addPass(new SMAAPass(innerWidth * devicePixelRatio, innerHeight * devicePixelRatio));
+const pr = isEmbed ? 1 : devicePixelRatio;
+composer.addPass(new SMAAPass(innerWidth * pr, innerHeight * pr));
 
 // --- lights ---
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -350,7 +357,7 @@ function animate() {
   }
   controls.update();
   renderPass.camera = camera;
-  ssaoPass.camera = camera;
+  if (ssaoPass) ssaoPass.camera = camera;
   composer.render();
 }
 animate();
@@ -367,8 +374,7 @@ window.addEventListener('resize', () => {
   camOrtho.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
-  ssaoPass.setSize(innerWidth, innerHeight );
-
+  if (ssaoPass) ssaoPass.setSize(innerWidth, innerHeight);
 });
 // --- rotor toggle buttons ---
 const ui = document.createElement('div');
@@ -399,8 +405,7 @@ ui.innerHTML = `
 `;
 document.body.appendChild(ui);
 
-// Hide UI when embedded (url has ?embed or inside an iframe)
-const isEmbed = new URLSearchParams(location.search).has('embed');
+// Hide UI when embedded
 if (isEmbed) ui.style.display = 'none';
 
 const slider = document.getElementById('speedSlider');

@@ -66,32 +66,56 @@ camOrtho.position.copy(camPersp.position);
 
 let camera = camPersp;
 
+// --- embed detection (must be before renderer so applyEmbedView is available) ---
+const isEmbed = new URLSearchParams(location.search).has('embed');
+
 // --- renderer ---
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(devicePixelRatio);
+renderer.setPixelRatio(isEmbed ? 1 : devicePixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = !isEmbed;
 document.body.appendChild(renderer.domElement);
 
+// In embed mode the iframe is now 100%×100% of the slide. Use setViewOffset
+// to replicate the old 240% oversized iframe framing (right:-94% bottom:-82%)
+// so the model appears in the same position — without rendering wasted pixels.
+const VIEW_SCALE = 2.4;    // old iframe was 240%
+const VIEW_OFF_X = 0.46;   // (240% - 100%) - 94% = 46% from left
+const VIEW_OFF_Y = 0.58;   // (240% - 100%) - 82% = 58% from top
+function applyEmbedView(cam) {
+  if (!isEmbed) return;
+  cam.setViewOffset(
+    VIEW_SCALE * innerWidth,  VIEW_SCALE * innerHeight,
+    VIEW_OFF_X * innerWidth,  VIEW_OFF_Y * innerHeight,
+    innerWidth, innerHeight
+  );
+}
+applyEmbedView(camPersp);
+applyEmbedView(camOrtho);
+
 // --- post-processing ---
+let ssaoPass = null;
 const composer = new EffectComposer(renderer);
 const renderPass = new RenderPass(scene, camera);
 composer.addPass(renderPass);
 
-const ssaoPass = new GTAOPass(scene, camera, innerWidth, innerHeight);
-ssaoPass.output    = GTAOPass.OUTPUT.Default;
-ssaoPass.pdSamples = 16;
-ssaoPass.enabled   = false;
-const aoParams = ssaoPass.gtaoMaterial.uniforms;
-aoParams['radius'          ].value = 0.05;
-aoParams['distanceExponent'].value = 1.5;
-aoParams['thickness'       ].value = 1.0;
-aoParams['scale'           ].value = 1.5;
-composer.addPass(ssaoPass);
+if (!isEmbed) {
+  ssaoPass = new GTAOPass(scene, camera, innerWidth, innerHeight);
+  ssaoPass.output    = GTAOPass.OUTPUT.Default;
+  ssaoPass.pdSamples = 16;
+  ssaoPass.enabled   = false;
+  const aoParams = ssaoPass.gtaoMaterial.uniforms;
+  aoParams['radius'          ].value = 0.05;
+  aoParams['distanceExponent'].value = 1.5;
+  aoParams['thickness'       ].value = 1.0;
+  aoParams['scale'           ].value = 1.5;
+  composer.addPass(ssaoPass);
+}
 
 composer.addPass(new OutputPass());
-composer.addPass(new SMAAPass(innerWidth * devicePixelRatio, innerHeight * devicePixelRatio));
+const pr = isEmbed ? 1 : devicePixelRatio;
+composer.addPass(new SMAAPass(innerWidth * pr, innerHeight * pr));
 
 // --- lights ---
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -338,7 +362,7 @@ function animate() {
   }
   controls.update();
   renderPass.camera = camera;
-  ssaoPass.camera = camera;
+  if (ssaoPass) ssaoPass.camera = camera;
   composer.render();
 }
 animate();
@@ -353,10 +377,11 @@ window.addEventListener('resize', () => {
   camOrtho.top    =  orthoSize;
   camOrtho.bottom = -orthoSize;
   camOrtho.updateProjectionMatrix();
+  applyEmbedView(camPersp);
+  applyEmbedView(camOrtho);
   renderer.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
-  ssaoPass.setSize(innerWidth, innerHeight );
-
+  if (ssaoPass) ssaoPass.setSize(innerWidth, innerHeight);
 });
 // --- rotor toggle buttons ---
 const ui = document.createElement('div');
@@ -387,8 +412,7 @@ ui.innerHTML = `
 `;
 document.body.appendChild(ui);
 
-// Hide UI when embedded (url has ?embed or inside an iframe)
-const isEmbed = new URLSearchParams(location.search).has('embed');
+// Hide UI when embedded
 if (isEmbed) ui.style.display = 'none';
 
 const slider = document.getElementById('speedSlider');
@@ -425,6 +449,7 @@ document.getElementById('opacitySlider').addEventListener('input', function () {
 });
 
 document.getElementById('btnAO').addEventListener('click', function () {
+  if (!ssaoPass) return;
   ssaoPass.enabled = !ssaoPass.enabled;
   this.textContent = ssaoPass.enabled ? 'AO Off' : 'AO On';
   this.classList.toggle('hidden', ssaoPass.enabled);
