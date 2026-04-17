@@ -47,6 +47,9 @@ import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass }        from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass }        from 'three/addons/postprocessing/SMAAPass.js';
+import { LineSegments2 }        from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineMaterial }         from 'three/addons/lines/LineMaterial.js';
 
 // --- scene ---
 const scene = new THREE.Scene();
@@ -129,7 +132,7 @@ controls.target.set(0, 0, 0);
 // tiltGroup tilts 90° so the disc face is visible
 let rotor1Ref = null, rotor2Ref = null, statorRef = null, windingsRef = null;
 let scaleRef = 1, statorBaseX = 0, statorBaseY = 0;
-let eccMode = 'static';   // 'static' | 'dynamic'
+let eccMode = 'dynamic';  // 'static' | 'dynamic'
 let eccMM   = 1.5;
 // spinGroup → tiltGroup : rotors spin + tilt
 const spinGroup = new THREE.Group();
@@ -356,7 +359,7 @@ ui.innerHTML = `
     <input id="eccSlider" type="range" min="0" max="5" step="0.1" value="1.5">
     <span id="eccVal">1.5 mm</span>
   </div>
-  <button id="btnEccMode">Dynamic</button>
+  <button id="btnEccMode" class="hidden">Static</button>
   <div id="speedWrap">
     <span>Stator opacity</span>
     <input id="opacitySlider" type="range" min="0" max="1" step="0.01" value="1">
@@ -364,6 +367,11 @@ ui.innerHTML = `
   <button id="btnCam">Orthographic</button>
   <button id="btnCamFollow">Cam Follow</button>
   <button id="btnAO">AO On</button>
+  <button id="btnWire">Edges</button>
+  <div id="speedWrap">
+    <span>Hidden edges</span>
+    <input id="hiddenSlider" type="range" min="0" max="1" step="0.01" value="0.2">
+  </div>
 `;
 document.body.appendChild(ui);
 
@@ -404,6 +412,84 @@ document.getElementById('btnAO').addEventListener('click', function () {
   ssaoPass.enabled = !ssaoPass.enabled;
   this.textContent = ssaoPass.enabled ? 'AO Off' : 'AO On';
   this.classList.toggle('hidden', ssaoPass.enabled);
+});
+
+let edgesOn = false;
+const savedMaterials = new Map();
+const edgeOverlays   = [];
+const hiddenOverlays = [];
+const edgeGeometries = [];
+const EDGE_ANGLE_DEG = 35;
+
+const HIDDEN_EDGE_BASE = 0xbb / 255;
+const hiddenEdgeMat = new THREE.LineBasicMaterial({
+  color: 0xffffff,
+  depthTest: false,
+  depthWrite: false,
+});
+(function setHiddenFromValue(v){
+  const g = 1 - v * (1 - HIDDEN_EDGE_BASE);
+  hiddenEdgeMat.color.setRGB(g, g, g);
+})(0.2);
+
+document.getElementById('btnWire').addEventListener('click', function () {
+  edgesOn = !edgesOn;
+  if (edgesOn) {
+    const meshes = [];
+    scene.traverse(obj => { if (obj.isMesh) meshes.push(obj); });
+    meshes.forEach(mesh => {
+      savedMaterials.set(mesh, mesh.material);
+      mesh.material = new THREE.MeshBasicMaterial({
+        colorWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      });
+      mesh.renderOrder = 1;
+
+      const edges = new THREE.EdgesGeometry(mesh.geometry, EDGE_ANGLE_DEG);
+      edgeGeometries.push(edges);
+
+      const hidden = new THREE.LineSegments(edges, hiddenEdgeMat);
+      hidden.renderOrder = 0;
+      hidden.visible = parseFloat(document.getElementById('hiddenSlider').value) > 0;
+
+      const visible = new THREE.LineSegments(
+        edges,
+        new THREE.LineBasicMaterial({ color: 0x000000 })
+      );
+      visible.renderOrder = 2;
+
+      mesh.add(hidden);
+      mesh.add(visible);
+      edgeOverlays.push(hidden, visible);
+      hiddenOverlays.push(hidden);
+    });
+  } else {
+    savedMaterials.forEach((mat, mesh) => {
+      mesh.material.dispose();
+      mesh.material = mat;
+    });
+    savedMaterials.clear();
+    edgeOverlays.forEach(line => {
+      line.parent?.remove(line);
+      if (line.material !== hiddenEdgeMat) line.material.dispose();
+    });
+    edgeOverlays.length = 0;
+    hiddenOverlays.length = 0;
+    edgeGeometries.forEach(g => g.dispose());
+    edgeGeometries.length = 0;
+  }
+  this.textContent = edgesOn ? 'Solid' : 'Edges';
+  this.classList.toggle('hidden', edgesOn);
+});
+
+document.getElementById('hiddenSlider').addEventListener('input', function () {
+  const v = parseFloat(this.value);
+  const g = 1 - v * (1 - HIDDEN_EDGE_BASE);
+  hiddenEdgeMat.color.setRGB(g, g, g);
+  const show = v > 0;
+  hiddenOverlays.forEach(line => { line.visible = show; });
 });
 
 document.getElementById('btnCamFollow').addEventListener('click', function () {
