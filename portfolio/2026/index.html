@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Slideshow</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; background: #222; overflow: hidden; }
+
+#deck {
+  position: relative; width: 100vw; height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.slide {
+  display: none;
+  position: absolute;
+  width:  min(100vw, calc(100vh * 16/9));
+  height: min(100vh, calc(100vw * 9/16));
+  box-shadow: 0 4px 32px rgba(0,0,0,0.6);
+  overflow: hidden;
+}
+.slide.active { display: block; }
+
+.slide img.page {
+  width: 100%; height: 100%;
+  object-fit: fill;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+}
+
+.slide .overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.slide .overlay > * { pointer-events: auto; }
+
+#nav {
+  position: fixed; bottom: calc(1.5% - 4px); left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; z-index: 100;
+  background: rgba(20,60,140,0.25); backdrop-filter: blur(6px);
+  padding: 4px 5px; border-radius: 20px; color: #fff;
+  border: 1px solid rgba(255,255,255,0.35);
+  font-family: sans-serif; font-size: 11px; user-select: none;
+}
+#nav button {
+  background: none; border: 1px solid rgba(255,255,255,0.35);
+  color: #fff; cursor: pointer; border-radius: 50%;
+  width: 22px; height: 22px; font-size: 11px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s; flex-shrink: 0;
+}
+#nav button:hover { background: rgba(255,255,255,0.2); }
+#slideNum { min-width: 46px; text-align: center; }
+
+#progress {
+  position: fixed; bottom: 0; left: 0; height: 3px;
+  background: #215caf; transition: width 0.2s; z-index: 200;
+}
+</style>
+</head>
+<body>
+
+<div id="deck">
+  <section class="slide active" id="s1"><img class="page" src="pdf/slides_svg/slide-01.svg" alt="Slide 1"></section>
+  <section class="slide" id="s2"><img class="page" src="pdf/slides_svg/slide-02.svg" alt="Slide 2"></section>
+  <section class="slide" id="s3"><img class="page" src="pdf/slides_svg/slide-03.svg" alt="Slide 3"></section>
+  <section class="slide" id="s4"><img class="page" src="pdf/slides_svg/slide-04.svg" alt="Slide 4"></section>
+  <section class="slide" id="s5">
+    <img class="page" src="pdf/slides_svg/slide-05.svg" alt="Slide 5">
+    <div class="overlay">
+      <iframe id="gltfFrame"
+        src="gltf/double-sided/index.html?embed"
+        style="position:absolute; left:0; top:0; width:100%; height:100%; border:none; background:transparent;"
+        allowtransparency="true"
+        title="3D motor model">
+      </iframe>
+    </div>
+  </section>
+  <section class="slide" id="s6"><img class="page" src="pdf/slides_svg/slide-06.svg" alt="Slide 6"></section>
+  <section class="slide" id="s7">
+    <img class="page" src="pdf/slides_svg/slide-07.svg" alt="Slide 7">
+    <div class="overlay">
+      <iframe id="explodedFrame"
+        src="gltf/exploded-view/index.html?embed"
+        style="position:absolute; left:0; top:0; width:100%; height:100%; border:none; background:transparent;"
+        allowtransparency="true"
+        title="3D exploded view">
+      </iframe>
+    </div>
+  </section>
+  <section class="slide" id="s8"><img class="page" src="pdf/slides_svg/slide-08.svg" alt="Slide 8"></section>
+  <section class="slide" id="s9"><img class="page" src="pdf/slides_svg/slide-09.svg" alt="Slide 9"></section>
+  <section class="slide" id="s10"><img class="page" src="pdf/slides_svg/slide-10.svg" alt="Slide 10"></section>
+  <section class="slide" id="s11"><img class="page" src="pdf/slides_svg/slide-11.svg" alt="Slide 11"></section>
+  <section class="slide" id="s12"><img class="page" src="pdf/slides_svg/slide-12.svg" alt="Slide 12"></section>
+  <section class="slide" id="s13"><img class="page" src="pdf/slides_svg/slide-13.svg" alt="Slide 13"></section>
+  <section class="slide" id="s14"><img class="page" src="pdf/slides_svg/slide-14.svg" alt="Slide 14"></section>
+  <section class="slide" id="s15"><img class="page" src="pdf/slides_svg/slide-15.svg" alt="Slide 15"></section>
+  <section class="slide" id="s16"><img class="page" src="pdf/slides_svg/slide-16.svg" alt="Slide 16"></section>
+  <section class="slide" id="s17"><img class="page" src="pdf/slides_svg/slide-17.svg" alt="Slide 17"></section>
+  <section class="slide" id="s18"><img class="page" src="pdf/slides_svg/slide-18.svg" alt="Slide 18"></section>
+  <section class="slide" id="s19">
+    <img class="page" src="pdf/slides_svg/slide-19.svg" alt="Slide 19">
+    <div class="overlay">
+      <iframe id="vttFrame"
+        src="gltf/VTT/index.html?embed"
+        style="position:absolute; left:0; top:0; width:100%; height:100%; border:none; background:transparent;"
+        allowtransparency="true"
+        title="Truss robot animation">
+      </iframe>
+    </div>
+  </section>
+  <section class="slide" id="s20">
+    <img class="page" src="pdf/slides_svg/slide-20.svg" alt="Slide 20">
+    <div class="overlay">
+      <!-- SVG color matrix filter for white balance (R G B scale on diagonal) -->
+      <svg width="0" height="0" style="position:absolute">
+        <defs>
+          <filter id="wb">
+            <!-- feColorMatrix values: R  G  B  A  offset (row per channel) -->
+            <!-- 1.0 = neutral; >1 boosts, <1 reduces that channel            -->
+            <feColorMatrix type="matrix" values="
+              1.00  0     0     0  0
+              0     1.00  0     0  0
+              0     0     1.05  0  0
+              0     0     0     1  0"/>
+          </filter>
+        </defs>
+      </svg>
+      <!-- outer div = visible region; inner video overflows to crop edges -->
+      <div style="position:absolute; left:6%; top:30%; width:58%; height:58%; overflow:hidden;">
+        <video id="moonVideo" autoplay loop muted playsinline
+          style="position:absolute; left:-7%; top:-7%; width:110%; height:110%; object-fit:cover; filter:url(#wb);">
+          <source src="gltf/moon/moon-transparent.webm" type="video/webm">
+          <source src="gltf/moon/moon.mp4" type="video/mp4">
+        </video>
+      </div>
+    </div>
+  </section>
+  <section class="slide" id="s21"><img class="page" src="pdf/slides_svg/slide-21.svg" alt="Slide 21"></section>
+</div>
+
+<div id="nav">
+  <button id="btnPrev">&#8592;</button>
+  <span id="slideNum">1 / 21</span>
+  <button id="btnNext">&#8594;</button>
+</div>
+<div id="progress"></div>
+
+<script>
+const slides = document.querySelectorAll('.slide');
+const total  = slides.length;
+const startPage = parseInt(location.hash.slice(1)) || 1;
+let cur = Math.min(Math.max(startPage - 1, 0), total - 1);
+
+const GLTF_SLIDE     = 4;   // 0-based: slide 5 (double-sided)
+const EXPLODED_SLIDE = 6;   // 0-based: slide 7 (exploded view)
+const VTT_SLIDE      = 18;  // 0-based: slide 19 (truss robot)
+const MOON_SLIDE     = 19;  // 0-based: slide 20 (moon video)
+
+function frameMsg(id, msg) {
+  const fr = document.getElementById(id);
+  if (fr) fr.contentWindow.postMessage(msg, '*');
+}
+
+function show(idx) {
+  const prev = cur;
+  slides[cur].classList.remove('active');
+  cur = (idx + total) % total;
+  slides[cur].classList.add('active');
+  document.getElementById('slideNum').textContent = (cur+1) + ' / ' + total;
+  document.getElementById('progress').style.width = ((cur+1)/total*100) + '%';
+  if (prev === GLTF_SLIDE     && cur !== GLTF_SLIDE)     frameMsg('gltfFrame',     { type: 'pause' });
+  if (cur  === GLTF_SLIDE     && prev !== GLTF_SLIDE)    frameMsg('gltfFrame',     { type: 'resume' });
+  if (prev === EXPLODED_SLIDE && cur !== EXPLODED_SLIDE)  frameMsg('explodedFrame', { type: 'pause' });
+  if (cur  === EXPLODED_SLIDE && prev !== EXPLODED_SLIDE) frameMsg('explodedFrame', { type: 'resume' });
+  if (prev === VTT_SLIDE      && cur !== VTT_SLIDE)       frameMsg('vttFrame',      { type: 'pause' });
+  if (cur  === VTT_SLIDE      && prev !== VTT_SLIDE)      frameMsg('vttFrame',      { type: 'resume' });
+  const moon = document.getElementById('moonVideo');
+  if (moon) {
+    if (prev === MOON_SLIDE && cur !== MOON_SLIDE) moon.pause();
+    if (cur  === MOON_SLIDE && prev !== MOON_SLIDE) moon.play();
+  }
+}
+
+document.getElementById('btnNext').addEventListener('click', () => show(cur+1));
+document.getElementById('btnPrev').addEventListener('click', () => show(cur-1));
+
+document.addEventListener('keydown', e => {
+  if (['ArrowRight','ArrowDown',' '].includes(e.key)) { e.preventDefault(); show(cur+1); }
+  if (['ArrowLeft','ArrowUp'].includes(e.key))        { e.preventDefault(); show(cur-1); }
+  if (e.key === 'Home') show(0);
+  if (e.key === 'End')  show(total-1);
+});
+
+let tx = 0;
+document.addEventListener('touchstart', e => { tx = e.touches[0].clientX; });
+document.addEventListener('touchend',   e => {
+  const dx = e.changedTouches[0].clientX - tx;
+  if (Math.abs(dx) > 40) show(dx < 0 ? cur+1 : cur-1);
+});
+
+// apply start page
+slides[0].classList.remove('active');
+slides[cur].classList.add('active');
+document.getElementById('slideNum').textContent = (cur+1) + ' / ' + total;
+document.getElementById('progress').style.width = ((cur+1)/total*100) + '%';
+
+// pause iframes that aren't the starting slide
+if (cur !== GLTF_SLIDE) {
+  document.getElementById('gltfFrame').addEventListener('load', () => {
+    frameMsg('gltfFrame', { type: 'pause' });
+  }, { once: true });
+}
+if (cur !== EXPLODED_SLIDE) {
+  document.getElementById('explodedFrame').addEventListener('load', () => {
+    frameMsg('explodedFrame', { type: 'pause' });
+  }, { once: true });
+}
+if (cur !== VTT_SLIDE) {
+  document.getElementById('vttFrame').addEventListener('load', () => {
+    frameMsg('vttFrame', { type: 'pause' });
+  }, { once: true });
+}
+if (cur !== MOON_SLIDE) {
+  const moon = document.getElementById('moonVideo');
+  if (moon) moon.addEventListener('canplay', () => moon.pause(), { once: true });
+}
+</script>
+</body>
+</html>

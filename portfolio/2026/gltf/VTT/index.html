@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Truss Robot</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { background: transparent; overflow: hidden; }
+    canvas { display: block; }
+    #ui {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 8px; align-items: center;
+    }
+    #ui button {
+      padding: 7px 16px; border: none; border-radius: 6px; cursor: pointer;
+      font-size: 13px; font-family: sans-serif;
+      background: rgba(0,0,0,0.55); color: #fff;
+      backdrop-filter: blur(6px); transition: background 0.2s;
+    }
+    #ui button:hover { background: rgba(0,0,0,0.8); }
+    #ui button.active { background: rgba(33,92,175,0.85); }
+    #speedWrap {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
+      padding: 6px 14px; border-radius: 6px; color: #fff;
+      font-size: 13px; font-family: sans-serif;
+    }
+    #speedSlider { width: 90px; accent-color: #fff; cursor: pointer; }
+  </style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader }     from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls }  from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }     from 'three/addons/postprocessing/RenderPass.js';
+import { OutputPass }     from 'three/addons/postprocessing/OutputPass.js';
+import { SMAAPass }       from 'three/addons/postprocessing/SMAAPass.js';
+
+// --- camera parameters ---
+const CAM_DIST        = 4.4;   // distance from target
+const CAM_ELEV_DEG    = 15;    // elevation angle in degrees (0 = horizontal, 90 = top-down)
+const CAM_AZIMUTH_DEG = 30;    // horizontal angle in degrees (0 = +Z, 90 = +X)
+const CAM_TARGET      = new THREE.Vector3(0, 0.9, 0);  // orbit center
+const CAM_FOV         = 40;    // perspective field of view
+const CAM_ORTHO_SIZE  = 0.8;   // orthographic half-height
+
+const _elev = CAM_ELEV_DEG * Math.PI / 180;
+const _azim = CAM_AZIMUTH_DEG * Math.PI / 180;
+const _camPos = new THREE.Vector3(
+  CAM_TARGET.x + CAM_DIST * Math.cos(_elev) * Math.sin(_azim),
+  CAM_TARGET.y + CAM_DIST * Math.sin(_elev),
+  CAM_TARGET.z + CAM_DIST * Math.cos(_elev) * Math.cos(_azim)
+);
+
+const camPersp = new THREE.PerspectiveCamera(CAM_FOV, innerWidth / innerHeight, 0.01, 200);
+camPersp.position.copy(_camPos);
+
+const camOrtho = new THREE.OrthographicCamera(
+  -CAM_ORTHO_SIZE * innerWidth / innerHeight, CAM_ORTHO_SIZE * innerWidth / innerHeight,
+   CAM_ORTHO_SIZE, -CAM_ORTHO_SIZE, 0.01, 200
+);
+camOrtho.position.copy(_camPos);
+
+let camera = camPersp;
+
+// --- scene ---
+const scene = new THREE.Scene();
+scene.background = null;
+
+// --- renderer ---
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// --- post-processing ---
+renderer.setClearColor(0x000000, 0);
+const renderTarget = new THREE.WebGLRenderTarget(
+  innerWidth * devicePixelRatio, innerHeight * devicePixelRatio,
+  { type: THREE.HalfFloatType, format: THREE.RGBAFormat }
+);
+const composer = new EffectComposer(renderer, renderTarget);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+composer.addPass(new OutputPass());
+composer.addPass(new SMAAPass(innerWidth * devicePixelRatio, innerHeight * devicePixelRatio));
+
+// --- lights ---
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const key = new THREE.DirectionalLight(0xfff8f0, 1.2);
+key.position.set(-3, 5, 4);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 0.5;
+key.shadow.camera.far  = 30;
+key.shadow.camera.left = key.shadow.camera.bottom = -5;
+key.shadow.camera.right = key.shadow.camera.top   =  5;
+key.shadow.bias = -0.001;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xf0f4ff, 0.6);
+fill.position.set(3, 2, -3); scene.add(fill);
+
+// --- ground grid ---
+const GRID_OPACITY = 0.1;
+const grid = new THREE.GridHelper(10, 20, 0x888888, 0x555555);
+grid.material.transparent = true;
+grid.material.opacity = GRID_OPACITY;
+scene.add(grid);
+
+// --- transparent shadow-catcher plane ---
+const SHADOW_OPACITY = 0.20;
+const shadowPlane = new THREE.Mesh(
+  new THREE.PlaneGeometry(10, 10),
+  new THREE.ShadowMaterial({ opacity: SHADOW_OPACITY })
+);
+shadowPlane.rotation.x = -Math.PI / 2;
+shadowPlane.receiveShadow = true;
+scene.add(shadowPlane);
+
+// --- orbit controls ---
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.target.copy(CAM_TARGET);
+controls.update();
+
+// --- animation state ---
+let mixer   = null;
+let clock   = new THREE.Clock();
+let animSpeed = 1.0;
+let currentModel = null;
+
+const MODELS = [
+  'ppo_truss_1tet.glb',
+  'ppo_truss_2tet.glb',
+  'ppo_truss_3tet.glb',
+];
+let currentModelIdx = 2;  // start with 3-tet
+
+const loader = new GLTFLoader();
+
+function loadModel(idx) {
+  if (currentModel) {
+    scene.remove(currentModel);
+    currentModel = null;
+  }
+  mixer = null;
+
+  loader.load(MODELS[idx], gltf => {
+    const model = gltf.scene;
+
+    // auto-center & scale
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const sc = 2.0 / maxDim;
+    model.scale.setScalar(sc);
+    model.position.set(-center.x * sc, -box.min.y * sc, -center.z * sc);
+
+    model.traverse(obj => { if (obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; } });
+    scene.add(model);
+    currentModel = model;
+
+    if (gltf.animations.length) {
+      mixer = new THREE.AnimationMixer(model);
+      gltf.animations.forEach(clip => {
+        const action = mixer.clipAction(clip);
+        action.play();
+      });
+    }
+
+    // update button active state
+    document.querySelectorAll('.btnModel').forEach((b, i) => {
+      b.classList.toggle('active', i === idx);
+    });
+    currentModelIdx = idx;
+  }, undefined, err => console.error('Load error', err));
+}
+
+loadModel(currentModelIdx);
+
+// --- RAF pause/resume ---
+let rafId = null;
+function pauseRender()  { if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; clock.stop(); } }
+function resumeRender() { if (rafId === null) { clock.start(); animate(); } }
+
+window.addEventListener('message', e => {
+  const d = e.data;
+  if (!d) return;
+  if (d.type === 'pause')  pauseRender();
+  if (d.type === 'resume') resumeRender();
+});
+
+// --- animate ---
+function animate() {
+  rafId = requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  if (mixer) mixer.update(dt * animSpeed);
+  controls.update();
+  renderPass.camera = camera;
+  composer.render();
+}
+animate();
+
+// --- resize ---
+window.addEventListener('resize', () => {
+  const aspect = innerWidth / innerHeight;
+  camPersp.aspect = aspect;
+  camPersp.updateProjectionMatrix();
+  camOrtho.left   = -CAM_ORTHO_SIZE * aspect;
+  camOrtho.right  =  CAM_ORTHO_SIZE * aspect;
+  camOrtho.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  renderTarget.setSize(innerWidth * devicePixelRatio, innerHeight * devicePixelRatio);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+// --- UI ---
+const isEmbed = new URLSearchParams(location.search).has('embed');
+
+const ui = document.createElement('div');
+ui.id = 'ui';
+ui.innerHTML = `
+  <button class="btnModel active" data-idx="0">1-tet</button>
+  <button class="btnModel active" data-idx="1">2-tet</button>
+  <button class="btnModel active" data-idx="2">3-tet</button>
+  <div id="speedWrap">
+    <span>Speed</span>
+    <input id="speedSlider" type="range" min="0" max="4" step="0.05" value="1">
+    <span id="speedVal">1.0×</span>
+  </div>
+  <button id="btnCam">Orthographic</button>
+`;
+document.body.appendChild(ui);
+
+if (isEmbed) ui.style.display = 'none';
+
+document.querySelectorAll('.btnModel').forEach((btn, i) => {
+  btn.classList.toggle('active', i === currentModelIdx);
+  btn.addEventListener('click', () => loadModel(i));
+});
+
+const slider   = document.getElementById('speedSlider');
+const speedVal = document.getElementById('speedVal');
+slider.addEventListener('input', () => {
+  animSpeed = parseFloat(slider.value);
+  speedVal.textContent = animSpeed.toFixed(2) + '×';
+});
+
+document.getElementById('btnCam').addEventListener('click', function () {
+  const toOrtho = camera === camPersp;
+  if (toOrtho) {
+    camOrtho.position.copy(camPersp.position);
+    camOrtho.quaternion.copy(camPersp.quaternion);
+  } else {
+    camPersp.position.copy(camOrtho.position);
+    camPersp.quaternion.copy(camOrtho.quaternion);
+  }
+  camera = toOrtho ? camOrtho : camPersp;
+  controls.object   = camera;
+  renderPass.camera = camera;
+  this.textContent  = toOrtho ? 'Perspective' : 'Orthographic';
+});
+</script>
+</body>
+</html>

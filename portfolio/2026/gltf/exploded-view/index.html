@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Exploded View</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { background: transparent; overflow: hidden; }
+    canvas { display: block; }
+    #ui {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 10px;
+    }
+    #ui button {
+      padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer;
+      font-size: 13px; font-family: sans-serif;
+      background: rgba(0,0,0,0.55); color: #fff;
+      backdrop-filter: blur(6px); transition: background 0.2s;
+    }
+    #ui button:hover  { background: rgba(0,0,0,0.8); }
+    #ui button.hidden { background: rgba(200,60,60,0.7); }
+    #speedWrap {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
+      padding: 6px 14px; border-radius: 6px; color: #fff;
+      font-size: 13px; font-family: sans-serif;
+    }
+    #speedSlider { width: 100px; accent-color: #fff; cursor: pointer; }
+    #eccSlider   { width: 120px; accent-color: #e05050; cursor: pointer; }
+  </style>
+</head>
+<body>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader }      from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls }   from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer }  from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass }        from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
+import { SMAAPass }        from 'three/addons/postprocessing/SMAAPass.js';
+
+// --- scene ---
+const scene = new THREE.Scene();
+scene.background = null;
+
+// --- explode gap between adjacent component pairs (world units) ---
+const EXPLODE_GAP = 0.06;
+
+// --- casing orientation correction (both casings are 90° off from rotor axis) ---
+const CASING_ROT_X = -Math.PI / 2;  // flip sign if still wrong after reload
+const CASING_TOP_SCALE = 0.85;      // scale casingTop relative to other components
+const CASING_BOT_SCALE = 1.05;      // scale casingBot relative to other components
+
+// --- camera parameters ---
+const CAM_DIST        = 0.80;
+const CAM_ELEV_DEG    = 0;
+const CAM_AZIMUTH_DEG = -30;
+const CAM_ROLL_DEG    = 180;
+const CAM_FOV         = 35;
+
+const _elev   = CAM_ELEV_DEG    * Math.PI / 180;
+const _azim   = CAM_AZIMUTH_DEG * Math.PI / 180;
+const rollRad = CAM_ROLL_DEG    * Math.PI / 180;
+const _xz     = CAM_DIST * Math.cos(_elev);
+const camPersp = new THREE.PerspectiveCamera(CAM_FOV, innerWidth / innerHeight, 0.001, 100);
+camPersp.position.set(_xz * Math.sin(_azim), CAM_DIST * Math.sin(_elev), _xz * Math.cos(_azim));
+camPersp.up.set(Math.sin(rollRad), Math.cos(rollRad), 0);
+
+const orthoSize = 0.28;
+const camOrtho  = new THREE.OrthographicCamera(
+  -orthoSize * innerWidth / innerHeight, orthoSize * innerWidth / innerHeight,
+   orthoSize, -orthoSize, 0.001, 100
+);
+camOrtho.position.copy(camPersp.position);
+camOrtho.up.copy(camPersp.up);
+
+let camera = camOrtho;
+
+// --- renderer ---
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+// --- post-processing ---
+renderer.setClearColor(0x000000, 0);
+const renderTarget = new THREE.WebGLRenderTarget(innerWidth * devicePixelRatio, innerHeight * devicePixelRatio, {
+  type: THREE.HalfFloatType,
+  format: THREE.RGBAFormat,
+});
+const composer = new EffectComposer(renderer, renderTarget);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+const ssaoPass = new GTAOPass(scene, camera, innerWidth, innerHeight);
+ssaoPass.output    = GTAOPass.OUTPUT.Default;
+ssaoPass.pdSamples = 16;
+ssaoPass.enabled   = false;
+const aoParams = ssaoPass.gtaoMaterial.uniforms;
+aoParams['radius'          ].value = 0.05;
+aoParams['distanceExponent'].value = 1.5;
+aoParams['thickness'       ].value = 1.0;
+aoParams['scale'           ].value = 1.5;
+composer.addPass(ssaoPass);
+composer.addPass(new OutputPass());
+composer.addPass(new SMAAPass(innerWidth * devicePixelRatio, innerHeight * devicePixelRatio));
+
+// --- lights ---
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.85;
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+const key = new THREE.DirectionalLight(0xfff8f0, 0.9);
+key.position.set(-1, 1.5, 2); scene.add(key);
+const fill = new THREE.DirectionalLight(0xf0f4ff, 0.9);
+fill.position.set(1, 1, 2); scene.add(fill);
+const rim = new THREE.DirectionalLight(0xffffff, 0.4);
+rim.position.set(0, -1, -2); scene.add(rim);
+
+// --- orbit controls ---
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance   = 0.05;
+controls.maxDistance   = 2.0;
+controls.target.set(0, 0, 0);
+
+// --- groups ---
+// rotors: full speed
+const spinGroup = new THREE.Group();
+const tiltGroup = new THREE.Group();
+tiltGroup.rotation.y = Math.PI / 2;
+spinGroup.add(tiltGroup);
+scene.add(spinGroup);
+
+// casingTop: 1/16 speed output rotation
+const casingTopSpinGroup = new THREE.Group();
+const casingTopTiltGroup = new THREE.Group();
+casingTopTiltGroup.rotation.y = Math.PI / 2;
+casingTopSpinGroup.add(casingTopTiltGroup);
+scene.add(casingTopSpinGroup);
+
+// stators + casingBot: stationary
+const staticTiltGroup = new THREE.Group();
+staticTiltGroup.rotation.y = Math.PI / 2;
+scene.add(staticTiltGroup);
+
+let rotor1Ref = null, rotor2Ref = null, statorRef = null, stator2Ref = null;
+let scaleRef = 1, statorBaseX = 0, statorBaseY = 0, stator2BaseX = 0, stator2BaseY = 0;
+let eccMode = 'dynamic';
+let eccMM   = 1.5;
+let ready   = false;
+
+function prepareRotor(root) {
+  root.traverse(obj => {
+    if (obj.name === 'magnetFixture') obj.visible = false;
+    if (obj.name === 'magnetTemplate' && obj.isMesh) {
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      mats.forEach(m => m.color.setRGB(0.08, 0.08, 0.08));
+    }
+    if (obj.isMesh && obj.parent?.name.startsWith('PZ_Countersunk_flat_head_screw')) {
+      const applyGray = m => { m.color.setRGB(0.99, 0.99, 0.99); m.metalness = 0.5; m.roughness = 0.4; m.needsUpdate = true; };
+      if (Array.isArray(obj.material)) obj.material.forEach(applyGray);
+      else applyGray(obj.material);
+    }
+  });
+  return root;
+}
+
+function centerByBbox(obj, sc) {
+  obj.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(obj);
+  const c = b.getCenter(new THREE.Vector3());
+  obj.position.set(-sc * c.x, -sc * c.y, -sc * c.z);
+  obj.scale.setScalar(sc);
+}
+
+const loader  = new GLTFLoader();
+const loadGLTF = url => new Promise((res, rej) => loader.load(url, res, undefined, rej));
+
+Promise.all([
+  loadGLTF('backCore_colored.gltf'),
+  loadGLTF('cycloidalDisc.gltf'),
+  loadGLTF('casingTop.gltf'),
+  loadGLTF('casingBot.gltf'),
+]).then(([bcGltf, discGltf, ctGltf, cbGltf]) => {
+
+  // --- scale from backCore ---
+  const rotor1 = prepareRotor(bcGltf.scene);
+  const rotor2 = prepareRotor(bcGltf.scene.clone(true));
+
+  const box    = new THREE.Box3().setFromObject(rotor1);
+  const centre = box.getCenter(new THREE.Vector3());
+  const size   = box.getSize(new THREE.Vector3());
+  const sc     = 0.15 / Math.max(size.x, size.y, size.z);
+
+  const axisBox = new THREE.Box3();
+  rotor1.traverse(obj => {
+    if (obj.isMesh) {
+      const m = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+      if (m?.name?.startsWith('magnet_')) axisBox.expandByObject(obj);
+    }
+  });
+  const axis = axisBox.isEmpty() ? centre.clone() : axisBox.getCenter(new THREE.Vector3());
+
+  // --- rotor 1 (top) ---
+  rotor1.position.set(-sc * axis.x, -sc * axis.y, -sc * centre.z);
+  rotor1.scale.setScalar(sc);
+  rotor1.updateMatrixWorld(true);
+
+  const mBox = new THREE.Box3();
+  rotor1.traverse(obj => {
+    if (obj.isMesh) {
+      const m = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+      if (m?.name?.startsWith('magnet_')) mBox.expandByObject(obj);
+    }
+  });
+  const r1FromMag = !mBox.isEmpty();
+  const r1Box = r1FromMag ? mBox : new THREE.Box3().setFromObject(rotor1);
+  const faceZ = r1FromMag
+    ? (Math.abs(r1Box.min.z) > Math.abs(r1Box.max.z) ? r1Box.min.z : r1Box.max.z)
+    : r1Box.min.z;
+  const AIRGAP = -0.0081 * sc;
+  rotor1.position.z += -AIRGAP / 2 - faceZ;
+
+  // --- rotor 2 (bottom, Z-mirrored) ---
+  rotor2.position.set(-sc * axis.x, -sc * axis.y, sc * centre.z);
+  rotor2.scale.set(sc, sc, -sc);
+  rotor2.rotation.z = Math.PI;
+  rotor2.updateMatrixWorld(true);
+
+  const mBox2 = new THREE.Box3();
+  rotor2.traverse(obj => {
+    if (obj.isMesh) {
+      const m = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+      if (m?.name?.startsWith('magnet_')) mBox2.expandByObject(obj);
+    }
+  });
+  const r2FromMag = !mBox2.isEmpty();
+  const r2Box  = r2FromMag ? mBox2 : new THREE.Box3().setFromObject(rotor2);
+  const faceZ2 = r2FromMag
+    ? (Math.abs(r2Box.max.z) > Math.abs(r2Box.min.z) ? r2Box.max.z : r2Box.min.z)
+    : r2Box.max.z;
+  rotor2.position.z += AIRGAP / 2 - faceZ2;
+
+  // --- stator discs ---
+  const stator   = discGltf.scene;
+  const discBox  = new THREE.Box3().setFromObject(stator);
+  const discCent = discBox.getCenter(new THREE.Vector3());
+  const discSize = discBox.getSize(new THREE.Vector3());
+
+  const hubCent = new THREE.Vector3();
+  let hubFound = false;
+  stator.traverse(obj => {
+    if (obj.name === 'discHub') {
+      new THREE.Box3().setFromObject(obj).getCenter(hubCent);
+      hubFound = true;
+    }
+  });
+  if (!hubFound) hubCent.copy(discCent);
+
+  stator.position.set(-sc * hubCent.x, -sc * hubCent.y, -sc * discCent.z);
+  stator.scale.setScalar(sc);
+
+  const stator2 = stator.clone(true);
+  stator2.position.set(-sc * hubCent.x, -sc * hubCent.y, sc * discCent.z);
+  stator2.scale.set(sc, sc, -sc);
+  stator2.rotation.z = Math.PI;
+
+  const DISC_GAP = sc * discSize.z + 0.001;
+  stator.position.z  +=  DISC_GAP / 2;
+  stator2.position.z += -DISC_GAP / 2;
+
+  // --- casings (centered by bbox) ---
+  const casingTop = ctGltf.scene;
+  const casingBot = cbGltf.scene;
+  casingTop.rotation.x = CASING_ROT_X;
+  centerByBbox(casingTop, sc * CASING_TOP_SCALE);
+  casingBot.rotation.x = CASING_ROT_X;
+  centerByBbox(casingBot, sc * CASING_BOT_SCALE);
+
+  // --- explode offsets (bottom → top: casingBot, rotor2, stator2, stator, rotor1, casingTop) ---
+  const E = EXPLODE_GAP;
+  casingBot.position.z  += 4.5 * E;
+  rotor2.position.z     -= 2.5 * E;
+  stator2.position.z    -= 0.8 * E;
+  stator.position.z     += 0.8 * E;
+  rotor1.position.z     += 2.5 * E;
+  casingTop.position.z  -= 5.0 * E;
+
+  // capture stator XY bases after all positioning (Z explode doesn't affect XY)
+  scaleRef     = sc;
+  statorBaseX  = stator.position.x;
+  statorBaseY  = stator.position.y;
+  stator2BaseX = stator2.position.x;
+  stator2BaseY = stator2.position.y;
+
+  // --- add to groups ---
+  tiltGroup.add(rotor1);
+  tiltGroup.add(rotor2);
+  staticTiltGroup.add(stator);
+  staticTiltGroup.add(stator2);
+  staticTiltGroup.add(casingBot);
+  casingTopTiltGroup.add(casingTop);
+
+  rotor1Ref  = rotor1;
+  rotor2Ref  = rotor2;
+  statorRef  = stator;
+  stator2Ref = stator2;
+  ready      = true;
+  document.title = 'Exploded View';
+
+}).catch(err => console.error('Load error', err));
+
+// --- speed ---
+let rotSpeed = 0.060;
+
+// --- postMessage API ---
+let rafId = null;
+function pauseRender()  { if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; } }
+function resumeRender() { if (rafId === null) animate(); }
+
+window.addEventListener('message', e => {
+  const d = e.data;
+  if (d && d.type === 'rotate:speed') rotSpeed = d.value;
+  else if (d && d.type === 'pause')   pauseRender();
+  else if (d && d.type === 'resume')  resumeRender();
+});
+
+// --- animate ---
+function animate() {
+  rafId = requestAnimationFrame(animate);
+  if (ready) {
+    spinGroup.rotation.x          += rotSpeed;
+    casingTopSpinGroup.rotation.x += rotSpeed / 16;
+
+    if (eccMode === 'dynamic' && statorRef) {
+      const r = eccMM * 0.001 * scaleRef;
+      const a = -spinGroup.rotation.x;  // negate to reverse orbital direction
+      statorRef.position.x  = statorBaseX  + r * Math.cos(a);
+      statorRef.position.y  = statorBaseY  - r * Math.sin(a);
+      stator2Ref.position.x = stator2BaseX - r * Math.cos(a);
+      stator2Ref.position.y = stator2BaseY + r * Math.sin(a);
+    }
+  }
+  controls.update();
+  renderPass.camera = camera;
+  ssaoPass.camera   = camera;
+  composer.render();
+}
+animate();
+
+// --- resize ---
+window.addEventListener('resize', () => {
+  const aspect = innerWidth / innerHeight;
+  camPersp.aspect = aspect;
+  camPersp.updateProjectionMatrix();
+  camOrtho.left   = -orthoSize * aspect;
+  camOrtho.right  =  orthoSize * aspect;
+  camOrtho.top    =  orthoSize;
+  camOrtho.bottom = -orthoSize;
+  camOrtho.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  renderTarget.setSize(innerWidth * devicePixelRatio, innerHeight * devicePixelRatio);
+  composer.setSize(innerWidth, innerHeight);
+  ssaoPass.setSize(innerWidth, innerHeight);
+  applyEmbedViewOffset();
+});
+
+// --- UI ---
+const ui = document.createElement('div');
+ui.id = 'ui';
+ui.innerHTML = `
+  <button id="btnR1">Hide Rotor 1</button>
+  <button id="btnS">Hide Stators</button>
+  <button id="btnR2">Hide Rotor 2</button>
+  <div id="speedWrap">
+    <span>Speed</span>
+    <input id="speedSlider" type="range" min="0" max="50" step="0.1" value="12">
+    <span id="speedVal">12.0&times;</span>
+  </div>
+  <div id="speedWrap">
+    <span>Eccentricity</span>
+    <input id="eccSlider" type="range" min="0" max="15" step="0.1" value="1.5">
+    <span id="eccVal">1.5 mm</span>
+  </div>
+  <button id="btnEccMode">Dynamic</button>
+  <button id="btnCam">Perspective</button>
+  <button id="btnAO">AO On</button>
+`;
+document.body.appendChild(ui);
+
+const isEmbed = new URLSearchParams(location.search).has('embed');
+if (isEmbed) ui.style.display = 'none';
+
+// --- embed view offset ---
+const EMBED_ZOOM        = 0.72;
+const EMBED_SHIFT_RIGHT = -0.16;
+const EMBED_SHIFT_DOWN  = -0.21;
+
+function applyEmbedViewOffset() {
+  if (!isEmbed) return;
+  const W = innerWidth, H = innerHeight;
+  const fw = W / EMBED_ZOOM, fh = H / EMBED_ZOOM;
+  camPersp.setViewOffset(fw, fh, -EMBED_SHIFT_RIGHT * fw, -EMBED_SHIFT_DOWN * fh, W, H);
+  camOrtho.setViewOffset(fw, fh, -EMBED_SHIFT_RIGHT * fw, -EMBED_SHIFT_DOWN * fh, W, H);
+}
+applyEmbedViewOffset();
+
+// --- slider events ---
+const slider   = document.getElementById('speedSlider');
+const speedVal = document.getElementById('speedVal');
+slider.addEventListener('input', () => {
+  rotSpeed = parseFloat(slider.value) * 0.005;
+  speedVal.textContent = parseFloat(slider.value).toFixed(1) + '×';
+});
+
+const eccSlider  = document.getElementById('eccSlider');
+const eccVal     = document.getElementById('eccVal');
+eccSlider.addEventListener('input', () => {
+  eccMM = parseFloat(eccSlider.value);
+  eccVal.textContent = eccMM.toFixed(1) + ' mm';
+});
+
+document.getElementById('btnEccMode').addEventListener('click', function () {
+  eccMode = eccMode === 'dynamic' ? 'static' : 'dynamic';
+  this.textContent = eccMode === 'dynamic' ? 'Dynamic' : 'Static';
+  this.classList.toggle('hidden', eccMode === 'dynamic');
+});
+
+function makeToggle(id, getObj) {
+  document.getElementById(id).addEventListener('click', function () {
+    const o = getObj();
+    if (!o) return;
+    o.visible = !o.visible;
+    this.textContent = (o.visible ? 'Hide ' : 'Show ') + this.textContent.replace(/^(Hide|Show) /, '');
+    this.classList.toggle('hidden', !o.visible);
+  });
+}
+makeToggle('btnR1', () => rotor1Ref);
+makeToggle('btnR2', () => rotor2Ref);
+
+document.getElementById('btnS').addEventListener('click', function () {
+  if (!statorRef) return;
+  const v = !statorRef.visible;
+  statorRef.visible  = v;
+  stator2Ref.visible = v;
+  this.textContent = (v ? 'Hide ' : 'Show ') + 'Stators';
+  this.classList.toggle('hidden', !v);
+});
+
+document.getElementById('btnAO').addEventListener('click', function () {
+  ssaoPass.enabled = !ssaoPass.enabled;
+  this.textContent = ssaoPass.enabled ? 'AO Off' : 'AO On';
+  this.classList.toggle('hidden', ssaoPass.enabled);
+});
+
+document.getElementById('btnCam').addEventListener('click', function () {
+  const toOrtho = camera === camPersp;
+  if (toOrtho) {
+    camOrtho.position.copy(camPersp.position);
+    camOrtho.quaternion.copy(camPersp.quaternion);
+  } else {
+    camPersp.position.copy(camOrtho.position);
+    camPersp.quaternion.copy(camOrtho.quaternion);
+  }
+  camera = toOrtho ? camOrtho : camPersp;
+  controls.object   = camera;
+  renderPass.camera = camera;
+  ssaoPass.camera   = camera;
+  this.textContent  = toOrtho ? 'Perspective' : 'Orthographic';
+  applyEmbedViewOffset();
+});
+</script>
+</body>
+</html>
