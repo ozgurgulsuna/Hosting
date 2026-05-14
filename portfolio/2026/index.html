@@ -31,6 +31,14 @@ html, body { width: 100%; height: 100%; background: #222; overflow: hidden; }
   user-select: none;
 }
 
+.slide img.vectors {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .slide .overlay {
   position: absolute;
   inset: 0;
@@ -65,12 +73,25 @@ html, body { width: 100%; height: 100%; background: #222; overflow: hidden; }
 <body>
 
 <div id="deck">
-  <section class="slide active" id="s1"><img class="page" src="pdf/slides_webp/slide-01.webp" alt="Slide 1"></section>
-  <section class="slide" id="s2"><img class="page" src="pdf/slides_webp/slide-02.webp" alt="Slide 2"></section>
-  <section class="slide" id="s3"><img class="page" src="pdf/slides_webp/slide-03.webp" alt="Slide 3"></section>
-  <section class="slide" id="s4"><img class="page" src="pdf/slides_webp/slide-04.webp" alt="Slide 4"></section>
+  <section class="slide active" id="s1">
+    <img class="page" src="pdf/slides_layered/slide-01/bitmap.webp" alt="Slide 1">
+    <img class="vectors" src="pdf/slides_layered/slide-01/vectors.svg" alt="">
+  </section>
+  <section class="slide" id="s2">
+    <img class="page" src="pdf/slides_layered/slide-02/bitmap.webp" alt="Slide 2">
+    <img class="vectors" src="pdf/slides_layered/slide-02/vectors.svg" alt="">
+  </section>
+  <section class="slide" id="s3">
+    <img class="page" src="pdf/slides_layered/slide-03/bitmap.webp" alt="Slide 3">
+    <img class="vectors" src="pdf/slides_layered/slide-03/vectors.svg" alt="">
+  </section>
+  <section class="slide" id="s4">
+    <img class="page" src="pdf/slides_layered/slide-04/bitmap.webp" alt="Slide 4">
+    <img class="vectors" src="pdf/slides_layered/slide-04/vectors.svg" alt="">
+  </section>
   <section class="slide" id="s5">
-    <img class="page" src="pdf/slides_webp/slide-05.webp" alt="Slide 5">
+    <img class="page" src="pdf/slides_layered/slide-05/bitmap.webp" alt="Slide 5">
+    <img class="vectors" src="pdf/slides_layered/slide-05/vectors.svg" alt="">
     <div class="overlay">
       <iframe id="gltfFrame"
         src="gltf/double-sided/index.html?embed"
@@ -80,9 +101,13 @@ html, body { width: 100%; height: 100%; background: #222; overflow: hidden; }
       </iframe>
     </div>
   </section>
-  <section class="slide" id="s6"><img class="page" src="pdf/slides_webp/slide-06.webp" alt="Slide 6"></section>
+  <section class="slide" id="s6">
+    <img class="page" src="pdf/slides_layered/slide-06/bitmap.webp" alt="Slide 6">
+    <img class="vectors" src="pdf/slides_layered/slide-06/vectors.svg" alt="">
+  </section>
   <section class="slide" id="s7">
-    <img class="page" src="pdf/slides_webp/slide-07.webp" alt="Slide 7">
+    <img class="page" src="pdf/slides_layered/slide-07/bitmap.webp" alt="Slide 7">
+    <img class="vectors" src="pdf/slides_layered/slide-07/vectors.svg" alt="">
     <div class="overlay">
       <iframe id="explodedFrame"
         src="gltf/exploded-view/index.html?embed"
@@ -92,19 +117,53 @@ html, body { width: 100%; height: 100%; background: #222; overflow: hidden; }
       </iframe>
     </div>
   </section>
-  <section class="slide" id="s8"><img class="page" src="pdf/slides_webp/slide-08.webp" alt="Slide 8"></section>
-  <section class="slide" id="s9"><img class="page" src="pdf/slides_webp/slide-09.webp" alt="Slide 9"></section>
-  <section class="slide" id="s10"><img class="page" src="pdf/slides_webp/slide-10.webp" alt="Slide 10"></section>
-  <section class="slide" id="s11"><img class="page" src="pdf/slides_webp/slide-11.webp" alt="Slide 11"></section>
-  <section class="slide" id="s12"><img class="page" src="pdf/slides_webp/slide-12.webp" alt="Slide 12"></section>
-  <section class="slide" id="s13"><img class="page" src="pdf/slides_webp/slide-13.webp" alt="Slide 13"></section>
-  <section class="slide" id="s14"><img class="page" src="pdf/slides_webp/slide-14.webp" alt="Slide 14"></section>
-  <section class="slide" id="s15"><img class="page" src="pdf/slides_webp/slide-15.webp" alt="Slide 15"></section>
-  <section class="slide" id="s16"><img class="page" src="pdf/slides_webp/slide-16.webp" alt="Slide 16"></section>
-  <section class="slide" id="s17"><img class="page" src="pdf/slides_webp/slide-17.webp" alt="Slide 17"></section>
-  <section class="slide" id="s18"><img class="page" src="pdf/slides_webp/slide-18.webp" alt="Slide 18"></section>
+  <section class="slide" id="s8">
+    <img class="page" src="pdf/slides_layered/slide-08/bitmap.webp" alt="Slide 8">
+    <img class="vectors" src="pdf/slides_layered/slide-08/vectors.svg" alt="">
+  </section>
+  <section class="slide" id="s9">
+    <img class="page" src="pdf/slides_layered/slide-09/bitmap.webp" alt="Slide 9">
+    <img class="vectors" src="pdf/slides_layered/slide-09/vectors.svg" alt="">
+  </section>
+  <section class="slide" id="s10">
+    <img class="page" src="pdf/slides_layered/slide-10/bitmap.webp" alt="Slide 10">
+    <img class="vectors" src="pdf/slides_layered/slide-10/vectors.svg" alt="">
+  </section>
+  <section class="slide" id="s11">
+    <img class="page" src="pdf/slides_layered/slide-11/bitmap.webp" alt="Slide 11">
+    <img class="vectors" src="pdf/slides_layered/slide-11/vectors.svg" alt="">
+  </section>
+  <section class="slide" id="s12">
+    <img class="page" src="pdf/slides_layered/slide-12/bitmap.webp" alt="Slide 12">
+    <img class="vectors" src="pdf/slides_layered/slide-12/vectors.svg" alt="">
+  </section>
+  <section class="slide" id="s13">
+    <img class="page" src="pdf/slides_layered/slide-13/bitmap.webp" alt="Slide 13">
+    <img class="vectors" src="pdf/slides_layered/slide-13/vectors.svg" alt="">
+  </section>
+  <section class="slide" id="s14">
+    <img class="page" src="pdf/slides_layered/slide-14/bitmap.webp" alt="Slide 14">
+    <img class="vectors" src="pdf/slides_layered/slide-14/vectors.svg" alt="">
+  </section>
+  <section class="slide" id="s15">
+    <img class="page" src="pdf/slides_layered/slide-15/bitmap.webp" alt="Slide 15">
+    <img class="vectors" src="pdf/slides_layered/slide-15/vectors.svg" alt="">
+  </section>
+  <section class="slide" id="s16">
+    <img class="page" src="pdf/slides_layered/slide-16/bitmap.webp" alt="Slide 16">
+    <img class="vectors" src="pdf/slides_layered/slide-16/vectors.svg" alt="">
+  </section>
+  <section class="slide" id="s17">
+    <img class="page" src="pdf/slides_layered/slide-17/bitmap.webp" alt="Slide 17">
+    <img class="vectors" src="pdf/slides_layered/slide-17/vectors.svg" alt="">
+  </section>
+  <section class="slide" id="s18">
+    <img class="page" src="pdf/slides_layered/slide-18/bitmap.webp" alt="Slide 18">
+    <img class="vectors" src="pdf/slides_layered/slide-18/vectors.svg" alt="">
+  </section>
   <section class="slide" id="s19">
-    <img class="page" src="pdf/slides_webp/slide-19.webp" alt="Slide 19">
+    <img class="page" src="pdf/slides_layered/slide-19/bitmap.webp" alt="Slide 19">
+    <img class="vectors" src="pdf/slides_layered/slide-19/vectors.svg" alt="">
     <div class="overlay">
       <iframe id="vttFrame"
         src="gltf/VTT/index.html?embed"
@@ -115,14 +174,13 @@ html, body { width: 100%; height: 100%; background: #222; overflow: hidden; }
     </div>
   </section>
   <section class="slide" id="s20">
-    <img class="page" src="pdf/slides_webp/slide-20.webp" alt="Slide 20">
+    <img class="page" src="pdf/slides_layered/slide-20/bitmap.webp" alt="Slide 20">
+    <img class="vectors" src="pdf/slides_layered/slide-20/vectors.svg" alt="">
     <div class="overlay">
       <!-- SVG color matrix filter for white balance (R G B scale on diagonal) -->
       <svg width="0" height="0" style="position:absolute">
         <defs>
           <filter id="wb">
-            <!-- feColorMatrix values: R  G  B  A  offset (row per channel) -->
-            <!-- 1.0 = neutral; >1 boosts, <1 reduces that channel            -->
             <feColorMatrix type="matrix" values="
               1.00  0     0     0  0
               0     1.00  0     0  0
@@ -144,7 +202,10 @@ html, body { width: 100%; height: 100%; background: #222; overflow: hidden; }
       </div>
     </div>
   </section>
-  <section class="slide" id="s21"><img class="page" src="pdf/slides_webp/slide-21.webp" alt="Slide 21"></section>
+  <section class="slide" id="s21">
+    <img class="page" src="pdf/slides_layered/slide-21/bitmap.webp" alt="Slide 21">
+    <img class="vectors" src="pdf/slides_layered/slide-21/vectors.svg" alt="">
+  </section>
 </div>
 
 <div id="nav">
@@ -226,6 +287,7 @@ if (cur !== VTT_SLIDE) {
     frameMsg('vttFrame', { type: 'pause' });
   }, { once: true });
 }
+
 // --- moon controller (overridable for iOS canvas compositor) ---
 const moonCtrl = {
   pause() { const v = document.getElementById('moonVideo'); if (v) v.pause(); },
@@ -316,11 +378,9 @@ if (cur !== MOON_SLIDE) {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
-  // override moonCtrl for iOS
   moonCtrl.pause = function() { splitVid.pause(); if (rafId) { cancelAnimationFrame(rafId); rafId = null; } };
   moonCtrl.play  = function() { splitVid.play().catch(()=>{}); if (!rafId) draw(); };
 
-  // start paused or playing based on current slide
   if (cur === MOON_SLIDE) {
     splitVid.play().catch(()=>{});
     splitVid.addEventListener('canplay', () => { if (!rafId) draw(); }, { once: true });
