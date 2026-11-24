@@ -1,0 +1,97 @@
+# Photo in frame/inbox/ -> works.bmp (the Kindle frame fetches https://www.ozgurgulsuna.com/works.bmp
+# at its next wake). No AI: frame/frame.py is a fixed script (turn, crop, tones, 16 greys).
+# Options come from words in the photo's file name, see frame/README.md.
+name: Frame picture
+
+on:
+  push:
+    branches: [master]
+    paths: ["frame/inbox/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: frame
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  frame:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+          sparse-checkout: |
+            /frame/
+            /works.bmp
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pillow
+        run: pip install pillow==11.0.0 pillow-heif==0.18.0
+
+      - name: Pick the newest photo in frame/inbox/
+        id: pick
+        run: |
+          # newest added file that is still there (names may have spaces: "IMG_7900 left.jpg")
+          f=$(git -c core.quotePath=false log --diff-filter=A --name-only --format= -- frame/inbox | grep -v '\.keep$' |
+              while IFS= read -r p; do [ -f "$p" ] && { echo "$p"; break; }; done)
+          [ -n "$f" ] || f=$(git -c core.quotePath=false ls-files frame/inbox | grep -v '\.keep$' | tail -n 1)
+          [ -n "$f" ] || { echo "No photo in frame/inbox/, nothing to do"; exit 0; }
+          echo "Photo: $f"
+          echo "photo=$f" >> "$GITHUB_OUTPUT"
+
+      - name: Make the frame picture
+        if: steps.pick.outputs.photo != ''
+        env:
+          PHOTO: ${{ steps.pick.outputs.photo }}
+        run: |
+          mkdir -p out
+          python frame/frame.py "$PHOTO" --name-options --no-save --out out | tee out/report.txt
+          { echo '```'; cat out/report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish, keep the preview, empty the inbox
+        if: steps.pick.outputs.photo != ''
+        env:
+          PHOTO: ${{ steps.pick.outputs.photo }}
+        run: |
+          bmp=$(ls out/*.bmp | head -n 1); name=$(basename "$bmp" .bmp)
+          cp "$bmp" works.bmp
+          cp out/previews/*_preview.png frame/previews/
+          echo "- $(date -u '+%Y-%m-%d %H:%M') UTC: $name (from $(basename "$PHOTO"))" >> frame/history.md
+          git config user.name "frame-inbox"
+          git config user.email "frame-inbox@users.noreply.github.com"
+          git -c core.quotePath=false ls-files -z frame/inbox | grep -zv '\.keep$' | xargs -0 -r git rm -q --
+          git add works.bmp frame/previews frame/history.md
+          git commit -q -m "Frame picture: $name"
+          git push -q origin HEAD:master
+          md5sum works.bmp | cut -d' ' -f1 > want.md5
+          echo "name=$name" >> "$GITHUB_ENV"
+
+      - name: Rebuild the website
+        if: steps.pick.outputs.photo != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # pushes made by this job don't start a Pages build on their own, so ask for one
+          gh api -X POST "repos/${{ github.repository }}/pages/builds" --jq .status || echo "Pages build request failed"
+
+      - name: Wait until the website serves it
+        if: steps.pick.outputs.photo != ''
+        run: |
+          want=$(cat want.md5)
+          for i in $(seq 1 40); do
+            got=$(curl -sf -H 'Cache-Control: no-cache' "https://www.ozgurgulsuna.com/works.bmp?t=$(date +%s)" | md5sum | cut -d' ' -f1)
+            if [ "$got" = "$want" ]; then
+              echo "Live after $((i * 15)) s: https://www.ozgurgulsuna.com/works.bmp ($name)" | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Not live after 10 min, check the Pages build" | tee -a "$GITHUB_STEP_SUMMARY"; exit 1
